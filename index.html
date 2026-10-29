@@ -260,6 +260,15 @@ body.locked .app,body.locked .scrim{display:none}
 .who .btn{padding:5px 10px;font-size:12.5px;background:transparent;color:#C8D6E0;border:1px solid rgba(255,255,255,.22)}
 #netbar{position:fixed;top:0;left:0;right:0;z-index:400;background:var(--amber-bg);color:var(--amber);text-align:center;font-weight:700;font-size:13.5px;padding:8px 12px;border-bottom:1px solid #F2D2A4}
 #netbar[hidden]{display:none}
+/* ---- Lo que el rol no permite, no se muestra ---- */
+body.no-catalog [data-act=new-product],body.no-catalog [data-act=edit-product],body.no-catalog [data-act=del-product],body.no-catalog [data-act=prices],body.no-catalog [data-act=import-csv],body.no-catalog [data-act=seed],body.no-catalog [data-act=cat-add],body.no-catalog [data-act=cat-edit],body.no-catalog [data-act=cat-del],body.no-catalog [data-act=sup-add],body.no-catalog [data-act=sup-edit],body.no-catalog [data-act=sup-del],body.no-catalog [data-act=pm-add],body.no-catalog [data-act=pm-edit],body.no-catalog [data-act=pm-del],
+body.no-stock [data-act=move],
+body.no-sell [data-act=new-sale],body.no-sell [data-act=void-sale],
+body.no-cash [data-act=caja-open],body.no-cash [data-act=caja-move],body.no-cash [data-act=caja-close],
+body.no-settle [data-act=settle],body.no-settle [data-act=settle-bulk],body.no-settle [data-sel]{display:none!important}
+.myrole{font-size:11.5px;color:#9FB3C2}
+.myrole b{color:#fff;font-weight:600}
+.rolesel{min-width:0;max-width:100%}
 /* ---- Selector de ferretería ---- */
 .storebox{padding:0 10px 6px;display:grid;gap:5px}
 .storebox label{font-size:12px;font-weight:600;color:#7F97A8;letter-spacing:.3px}
@@ -294,6 +303,7 @@ body.locked .app,body.locked .scrim{display:none}
     <div class="storebox">
       <label for="storeSel">Ferretería</label>
       <div class="storerow"><select id="storeSel" aria-label="Elegir ferretería"></select><button class="eye" id="storeHide" data-act="store-hide" type="button" title="Dejar de ver esta ferretería en la lista" aria-label="Ocultar esta ferretería"></button></div>
+      <div class="myrole" id="myRole"></div>
     </div>
     <nav id="nav" aria-label="Secciones"></nav>
     <div class="side-foot">
@@ -347,8 +357,20 @@ const SB_URL='https://mxwwiaajnosawmowymhx.supabase.co';
 const SB_KEY='sb_publishable_Ph6MX2UpG8p0swaVS7MsgA_KERSjHaQ';   // clave pública: está pensada para ir en la página
 const BUCKET='product-photos';
 let sb=null,USER=null,RT=null,rtTimer=null,rtSet={};
-let STORE=null,STORES=[],ME={admin:false},ADM=null;   // ferretería elegida, las que puede ver, y datos de administración
+let STORE=null,STORES=[],ME={admin:false},ADM=null,MYROLES={},TEAM=null;   // ferretería elegida, las que puede ver, y datos de administración
 const STORE_KEY='ferreteria-ultima',HIDE_KEY='ferreteria-ocultas';
+// Plantillas de permisos por ferretería
+const ROLES={owner:'Dueño',manager:'Encargado',seller:'Vendedor',viewer:'Solo lectura',admin:'Administrador'};
+const ROLE_HELP={owner:'todo, y sumar gente a su ferretería',manager:'todo menos gestionar personas',seller:'vender, caja, cobros y ver stock',viewer:'mira todo y no cambia nada'};
+const PERMS={admin:['read','sell','cash','settle','stock','catalog','members'],owner:['read','sell','cash','settle','stock','catalog','members'],manager:['read','sell','cash','settle','stock','catalog'],seller:['read','sell','cash','settle'],viewer:['read']};
+const MAX_OWN=3,BACKUP_DAYS=7;
+function curRole(id){id=id||STORE;return ME.admin?'admin':(MYROLES[id]||'')}
+function can(perm,id){return (PERMS[curRole(id)]||[]).indexOf(perm)>-1}
+function ownedCount(){return Object.keys(MYROLES).filter(k=>MYROLES[k]==='owner').length}
+function canCreateStore(){return ME.admin||ownedCount()<MAX_OWN}
+// Qué permiso pide cada botón (la base de datos igual lo controla por su lado)
+const ACT_PERM={'new-product':'catalog','edit-product':'catalog','del-product':'catalog','prices':'catalog','import-csv':'catalog','seed':'catalog','cat-add':'catalog','cat-edit':'catalog','cat-del':'catalog','sup-add':'catalog','sup-edit':'catalog','sup-del':'catalog','pm-add':'catalog','pm-edit':'catalog','pm-del':'catalog','move':'stock','new-sale':'sell','pos-confirm':'sell','void-sale':'sell','caja-open':'cash','caja-move':'cash','caja-close':'cash','settle':'settle','settle-bulk':'settle'};
+function applyPermClasses(){['catalog','stock','sell','cash','settle','members'].forEach(k=>document.body.classList.toggle('no-'+k,!!STORE&&!can(k)))}
 function setStore(id){STORE=id;try{if(sb&&sb._setStore)sb._setStore(id)}catch(e){}}
 function storeName(){const s=STORES.find(x=>x.id===STORE);return s?s.name:'Ferretería'}
 function lsGet(k){try{return localStorage.getItem(k)}catch(e){return null}}
@@ -516,12 +538,17 @@ async function loadAccess(){
   ME={admin:!!(pr.data&&pr.data[0]&&pr.data[0].is_admin)};
   const st=await c.from('stores').select('*').order('name');
   if(st.error)throw st.error;
-  STORES=(st.data||[]).map(r=>({id:r.id,name:r.name}));
+  STORES=(st.data||[]).map(r=>({id:r.id,name:r.name,lastBackup:r.last_backup_at||null,createdBy:r.created_by||null}));
+  const mm=await c.from('memberships').select('*').eq('user_id',USER.id);
+  if(mm.error)throw mm.error;
+  MYROLES={};(mm.data||[]).forEach(m=>{MYROLES[m.store_id]=m.role||'manager'});
 }
 function renderStoreSel(){
   const sel=$('#storeSel');if(!sel)return;
   const vis=visibleStores();
-  sel.innerHTML=vis.map(s=>'<option value="'+esc(s.id)+'"'+(s.id===STORE?' selected':'')+'>'+esc(s.name)+'</option>').join('')+(ME.admin?'<option value="__new">＋ Crear nueva ferretería…</option>':'');
+  sel.innerHTML=vis.map(s=>'<option value="'+esc(s.id)+'"'+(s.id===STORE?' selected':'')+'>'+esc(s.name)+'</option>').join('')+(canCreateStore()?'<option value="__new">＋ Crear nueva ferretería…'+(ME.admin?'':' (te quedan '+(MAX_OWN-ownedCount())+')')+'</option>':'');
+  const mr=$('#myRole');if(mr)mr.innerHTML=STORE?'Tu rol acá: <b>'+esc(ROLES[curRole()]||'—')+'</b>':'';
+  applyPermClasses();
   const eye=$('#storeHide');eye.innerHTML=ic('eyeoff',17);eye.hidden=vis.length<2;
   const n=STORES.length-vis.length,sh=$('#showHidden');
   sh.hidden=n<1;sh.textContent=n>0?'ver ocultas ('+n+')':'';
@@ -568,13 +595,33 @@ async function enter(user){
   await startStore(first.id);
 }
 function leave(){
-  stopRealtime();USER=null;ready=false;STORE=null;STORES=[];ME={admin:false};ADM=null;
+  stopRealtime();USER=null;ready=false;STORE=null;STORES=[];ME={admin:false};ADM=null;MYROLES={};TEAM=null;applyPermClasses();
   try{if(sb&&sb._setStore)sb._setStore(null)}catch(e){}
   resetView();
   $('#view').innerHTML='';
   showLogin();
 }
-async function logout(){
+function backupDue(){
+  const s=STORES.find(x=>x.id===STORE);if(!s||!ready)return null;
+  if(!s.lastBackup)return {s,days:null};
+  const d=Math.floor((Date.now()-new Date(s.lastBackup).getTime())/86400000);
+  return d>=BACKUP_DAYS?{s,days:d}:null;
+}
+// Al salir: si hace más de una semana que no se descarga una copia de esta ferretería, lo recuerda.
+function logout(){
+  const due=backupDue();
+  if(!due)return doLogout();
+  openSheet('Antes de salir',
+    '<p style="margin-top:0">'+(due.days==null?'Todavía no se descargó ninguna copia de seguridad de <b>'+esc(due.s.name)+'</b>.':'Hace <b>'+due.days+' días</b> que no se descarga una copia de seguridad de <b>'+esc(due.s.name)+'</b>.')+'</p>'+
+    '<p class="muted small">Los datos están guardados en la nube. La copia es un resguardo extra por si algún día hace falta recuperar algo: guardala en Google Drive. Tarda un segundo.</p>'+
+    '<div class="row" style="justify-content:flex-end;gap:8px;margin-top:14px"><button class="btn" data-act="exit-now">Salir sin copia</button><button class="btn primary" data-act="backup-exit">'+ic('download',16)+'Descargar copia y salir</button></div>');
+}
+async function backupAndExit(){
+  await exportJSON();
+  closeModal();
+  setTimeout(doLogout,600);
+}
+async function doLogout(){
   try{await sbClient().auth.signOut()}catch(e){}
   if(USER)leave();
 }
@@ -730,8 +777,10 @@ function compressImage(file,maxPx,q){
       img.onload=()=>{
         const s=Math.min(1,maxPx/Math.max(img.width,img.height));
         const c=document.createElement('canvas');c.width=Math.max(1,Math.round(img.width*s));c.height=Math.max(1,Math.round(img.height*s));
-        c.getContext('2d').drawImage(img,0,0,c.width,c.height);
-        res(c.toDataURL('image/jpeg',q));
+        const g=c.getContext('2d');g.fillStyle='#fff';g.fillRect(0,0,c.width,c.height);g.drawImage(img,0,0,c.width,c.height);
+        // WebP pesa bastante menos que JPEG con la misma calidad; si el navegador no lo soporta, JPEG
+        let d='';try{d=c.toDataURL('image/webp',q)}catch(e){}
+        res(/^data:image\/webp/.test(d)?d:c.toDataURL('image/jpeg',q));
       };
       img.onerror=()=>rej(new Error('imagen'));img.src=fr.result;
     };
@@ -901,6 +950,7 @@ const NAV=[
   ['Administración',[['usuarios','Usuarios y ferreterías','users']],'admin']
 ];
 const TITLES={panel:'Panel',ventas:'Ventas',caja:'Caja',liquidaciones:'Liquidaciones y cobros',inventario:'Inventario',faltantes:'Lista de faltantes',movimientos:'Movimientos de stock',categorias:'Categorías',proveedores:'Proveedores',pagos:'Formas de pago',ajustes:'Ajustes y respaldo',usuarios:'Usuarios y ferreterías'};
+function adminTitle(){return ME.admin?'Usuarios y ferreterías':'Mis ferreterías y equipo'}
 function render(){
   if(!ready)return;
   const n=needs().length;
@@ -908,11 +958,12 @@ function render(){
   pill.className='pill '+(n?'warn':'ok');
   pill.innerHTML=n?(ic('alert',17)+n+' para reponer'):(ic('check',17)+'Stock en orden');
   document.title=(n?'('+n+') ':'')+storeName()+' · Sistema';
-  $('#pageTitle').textContent=TITLES[ui.tab]||'';
+  $('#pageTitle').textContent=ui.tab==='usuarios'?adminTitle():(TITLES[ui.tab]||'');
   $('#menuBtn').innerHTML=ic('menu',20);
   $('#topSale').innerHTML=ic('cart',18)+'<span class="lbl">Nueva venta</span>';
   const od=overdueCount();
-  $('#nav').innerHTML=NAV.filter(g=>g[2]!=='admin'||ME.admin).map(g=>'<div class="ng">'+g[0]+'</div>'+g[1].map(t=>{
+  $('#nav').innerHTML=NAV.filter(g=>g[2]!=='admin'||ME.admin||ownedCount()>0).map(g=>'<div class="ng">'+g[0]+'</div>'+g[1].map(t=>{
+    if(t[0]==='usuarios'&&!ME.admin)t=['usuarios','Mis ferreterías y equipo','users'];
     let extra='';
     if(t[0]==='faltantes'&&n)extra='<span class="n">'+n+'</span>';
     if(t[0]==='liquidaciones'&&od)extra='<span class="n">'+od+'</span>';
@@ -1517,49 +1568,90 @@ function showAllStores(){setHidden([]);renderStoreSel();closeModal()}
 
 /* ================= Administración: ferreterías y usuarios ================= */
 async function loadAdmin(){
-  if(!ME.admin)return;
-  try{
-    const a=await sbClient().from('profiles').select('*').order('email');
-    const b=await sbClient().from('memberships').select('*');
-    if(a.error)throw a.error;if(b.error)throw b.error;
-    ADM={users:a.data||[],mem:b.data||[]};
-  }catch(e){ADM={users:[],mem:[],err:errMsg(e)}}
+  if(ME.admin){
+    try{
+      const a=await sbClient().from('profiles').select('*').order('email');
+      const b=await sbClient().from('memberships').select('*');
+      if(a.error)throw a.error;if(b.error)throw b.error;
+      ADM={users:a.data||[],mem:b.data||[]};
+    }catch(e){ADM={users:[],mem:[],err:errMsg(e)}}
+  } else ADM={users:[],mem:[]};
+  await loadTeam();
   if(ui.tab==='usuarios')render();
 }
+async function loadTeam(){
+  TEAM=null;
+  if(!STORE||!can('members'))return;
+  try{
+    const r=await sbClient().rpc('list_store_members',{p_store:STORE});
+    if(r.error)throw r.error;
+    TEAM={store:STORE,list:r.data||[]};
+  }catch(e){TEAM={store:STORE,list:[],err:errMsg(e)}}
+}
 async function reloadStores(){
-  const st=await sbClient().from('stores').select('*').order('name');
-  if(st.error)throw st.error;
-  STORES=(st.data||[]).map(r=>({id:r.id,name:r.name}));
+  await loadAccess();
   renderStoreSel();
 }
-function viewAdmin(){
-  if(!ME.admin)return '<div class="card empty">Esta sección es solo para el administrador.</div>';
-  if(!ADM)return '<div class="card empty">Cargando…</div>';
-  let h='<div class="gh pagehead"><div class="title" style="margin:0">Ferreterías</div><button class="btn primary" data-act="store-new">'+ic('plus',16)+'Nueva ferretería</button></div>'+
-  '<div class="card" style="padding:6px 10px"><table class="tbl"><thead><tr><th>Nombre</th><th>Estado</th><th></th></tr></thead><tbody>'+
-  STORES.map(s=>'<tr><td class="first pname">'+esc(s.name)+'</td><td data-label="Estado">'+(s.id===STORE?'<span class="badge ok">Es la que estás viendo</span>':(hiddenIds().indexOf(s.id)>-1?'<span class="muted small">Oculta para vos</span>':''))+'</td>'+
+function roleOptions(sel,withNone,withOwner){
+  return (withNone?'<option value="">Sin acceso</option>':'')+['owner','manager','seller','viewer'].filter(r=>withOwner||r!=='owner').map(r=>'<option value="'+r+'"'+(r===sel?' selected':'')+'>'+ROLES[r]+'</option>').join('');
+}
+function rolesLegend(){
+  return '<div class="card small muted" style="line-height:1.6"><b>Plantillas de permisos:</b><br>'+['owner','manager','seller','viewer'].map(r=>'<b>'+ROLES[r]+'</b>: '+ROLE_HELP[r]).join('<br>')+
+  '<br>Cada usuario puede crear hasta '+MAX_OWN+' ferreterías propias (queda como Dueño). El administrador puede todo en todas.</div>';
+}
+function storeRowsHtml(list){
+  return '<table class="tbl"><thead><tr><th>Nombre</th><th>Estado</th><th></th></tr></thead><tbody>'+
+  list.map(s=>'<tr><td class="first pname">'+esc(s.name)+'</td><td data-label="Estado">'+(s.id===STORE?'<span class="badge ok">Es la que estás viendo</span>':(hiddenIds().indexOf(s.id)>-1?'<span class="muted small">Oculta para vos</span>':''))+'</td>'+
   '<td><div class="acts"><button class="btn sm" data-act="store-rename" data-id="'+esc(s.id)+'">Renombrar</button><button class="btn sm danger" data-act="store-del" data-id="'+esc(s.id)+'">Eliminar</button></div></td></tr>').join('')+
-  '</tbody></table></div><div class="spacer"></div>'+
+  '</tbody></table>';
+}
+function teamHtml(){
+  const s=STORES.find(x=>x.id===STORE);
+  if(!can('members')||!s)return '';
+  let h='<div class="gh pagehead"><div class="title" style="margin:0">Equipo de '+esc(s.name)+'</div><button class="btn primary" data-act="team-add">'+ic('plus',16)+'Sumar persona</button></div>';
+  if(!TEAM||TEAM.store!==STORE)return h+'<div class="card empty">Cargando…</div>';
+  if(TEAM.err)return h+'<div class="card empty"><p>'+esc(TEAM.err)+'</p></div>';
+  if(!TEAM.list.length)return h+'<div class="card empty">Todavía no sumaste a nadie. '+(ME.admin?'':'Las personas tienen que tener usuario: lo crea el administrador.')+'</div>';
+  return h+'<div class="card" style="padding:6px 10px"><table class="tbl"><thead><tr><th>Email</th><th>Rol</th><th></th></tr></thead><tbody>'+
+  TEAM.list.map(m=>{
+    const lock=m.role==='owner'&&!ME.admin;
+    return '<tr><td class="first pname">'+esc(m.email)+(USER&&m.user_id===USER.id?' <span class="muted small">(vos)</span>':'')+'</td><td data-label="Rol">'+esc(ROLES[m.role]||m.role)+'</td>'+
+    '<td><div class="acts">'+(lock?'':'<button class="btn sm" data-act="team-role" data-id="'+esc(m.user_id)+'">Cambiar rol</button><button class="btn sm danger" data-act="team-del" data-id="'+esc(m.user_id)+'">Quitar</button>')+'</div></td></tr>';
+  }).join('')+'</tbody></table></div>';
+}
+function viewAdmin(){
+  if(!ME.admin&&ownedCount()<1)return '<div class="card empty">Esta sección es para el administrador y para quienes crearon una ferretería.</div>';
+  if(!ADM)return '<div class="card empty">Cargando…</div>';
+  if(!ME.admin){
+    const mine=STORES.filter(s=>MYROLES[s.id]==='owner');
+    return '<div class="gh pagehead"><div class="title" style="margin:0">Ferreterías que creaste ('+mine.length+' de '+MAX_OWN+')</div>'+(canCreateStore()?'<button class="btn primary" data-act="store-new">'+ic('plus',16)+'Nueva ferretería</button>':'')+'</div>'+
+      '<div class="card" style="padding:6px 10px">'+storeRowsHtml(mine)+'</div><div class="spacer"></div>'+
+      (can('members')?teamHtml():'<div class="card small muted">Para ver y armar el equipo, elegí arriba a la izquierda una de las ferreterías que creaste.</div>')+
+      '<div class="spacer"></div>'+rolesLegend();
+  }
+  let h='<div class="gh pagehead"><div class="title" style="margin:0">Ferreterías</div><button class="btn primary" data-act="store-new">'+ic('plus',16)+'Nueva ferretería</button></div>'+
+  '<div class="card" style="padding:6px 10px">'+storeRowsHtml(STORES)+'</div><div class="spacer"></div>'+
   '<div class="gh pagehead"><div class="title" style="margin:0">Usuarios</div><button class="btn primary" data-act="user-new">'+ic('plus',16)+'Nuevo usuario</button></div>';
   if(ADM.err)return h+'<div class="card empty"><p>'+esc(ADM.err)+'</p></div>';
-  h+='<div class="card" style="padding:6px 10px"><table class="tbl"><thead><tr><th>Email</th><th>Rol</th><th>Ferreterías</th><th></th></tr></thead><tbody>'+
+  h+='<div class="card" style="padding:6px 10px"><table class="tbl"><thead><tr><th>Email</th><th>Rol</th><th>Ferreterías y permisos</th><th></th></tr></thead><tbody>'+
   ADM.users.map(u=>{
-    const mine=ADM.mem.filter(m=>m.user_id===u.user_id).map(m=>{const s=STORES.find(x=>x.id===m.store_id);return s?s.name:''}).filter(Boolean);
-    return '<tr><td class="first pname">'+esc(u.email)+'</td><td data-label="Rol">'+(u.is_admin?'<span class="badge adm">Administrador</span>':'Personal')+'</td>'+
-    '<td data-label="Ferreterías">'+(u.is_admin?'<span class="muted">Todas</span>':(mine.length?esc(mine.join(', ')):'<span class="muted">Ninguna</span>'))+'</td>'+
-    '<td><div class="acts">'+(u.is_admin?'':'<button class="btn sm" data-act="user-access" data-id="'+esc(u.user_id)+'">Accesos</button>')+
+    const mine=ADM.mem.filter(m=>m.user_id===u.user_id).map(m=>{const s=STORES.find(x=>x.id===m.store_id);return s?esc(s.name)+' <span class="muted small">('+esc(ROLES[m.role]||m.role)+')</span>':''}).filter(Boolean);
+    return '<tr><td class="first pname">'+esc(u.email)+'</td><td data-label="Rol">'+(u.is_admin?'<span class="badge adm">Administrador</span>':'Usuario')+'</td>'+
+    '<td data-label="Ferreterías">'+(u.is_admin?'<span class="muted">Todas</span>':(mine.length?mine.join('<br>'):'<span class="muted">Ninguna</span>'))+'</td>'+
+    '<td><div class="acts">'+(u.is_admin?'':'<button class="btn sm" data-act="user-access" data-id="'+esc(u.user_id)+'">Permisos</button>')+
     '<button class="btn sm" data-act="user-pass" data-id="'+esc(u.user_id)+'">Contraseña</button>'+
     (u.is_admin?'':'<button class="btn sm danger" data-act="user-del" data-id="'+esc(u.user_id)+'">Eliminar</button>')+'</div></td></tr>';
-  }).join('')+'</tbody></table></div>'+
-  '<p class="muted small">El administrador ve todas las ferreterías y gestiona usuarios. El personal solo entra a las ferreterías que le asignes.</p>';
+  }).join('')+'</tbody></table></div><div class="spacer"></div>'+teamHtml()+'<div class="spacer"></div>'+rolesLegend();
   return h;
 }
-function storeChecks(sel){
-  return STORES.map(s=>'<label class="f chk full"><input type="checkbox" name="st_'+esc(s.id)+'"'+(sel.indexOf(s.id)>-1?' checked':'')+'> '+esc(s.name)+'</label>').join('');
+function accessFields(cur){
+  return '<div class="small muted" style="margin:0 0 6px">Elegí una plantilla de permisos para cada ferretería:</div>'+
+  STORES.map(s=>'<label class="f full" style="display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center"><span>'+esc(s.name)+'</span><select class="rolesel" name="r_'+esc(s.id)+'">'+roleOptions(cur[s.id]||'',true,true)+'</select></label>').join('');
 }
-function pickedStores(fd){return STORES.filter(s=>fd['st_'+s.id]).map(s=>s.id)}
+function pickedAccess(fd){const o={};STORES.forEach(s=>{const v=fd['r_'+s.id];if(v)o[s.id]=v});return o}
 function storeNewModal(){
-  openModal('Nueva ferretería','<p class="muted small" style="margin-top:0">Empieza vacía, con su propio inventario, caja, ventas y formas de pago.</p><label class="f full">Nombre *<input name="name" required maxlength="60" placeholder="Ej: Ferretería Sur"></label>',async fd=>{
+  if(!canCreateStore()){toast('Llegaste al límite de '+MAX_OWN+' ferreterías propias','err');return}
+  openModal('Nueva ferretería','<p class="muted small" style="margin-top:0">Empieza vacía, con su propio inventario, caja, ventas y formas de pago.'+(ME.admin?'':' Vas a quedar como Dueño y podés crear hasta '+MAX_OWN+' (te quedan '+(MAX_OWN-ownedCount())+').')+'</p><label class="f full">Nombre *<input name="name" required maxlength="60" placeholder="Ej: Ferretería Sur"></label>',async fd=>{
     const r=await attempt(()=>sbClient().rpc('create_store',{p_name:fd.name}));
     if(!r.ok)return false;
     try{await reloadStores()}catch(e){}
@@ -1590,35 +1682,37 @@ function storeDelModal(id){
     if(id===STORE){
       closeModal();
       const next=(visibleStores()[0]||STORES[0]);
-      await switchStore(next.id);
-      ui.tab='usuarios';render();
+      if(next){await switchStore(next.id);ui.tab='usuarios';render()}
     }
     loadAdmin();
   },'Eliminar para siempre');
 }
 function userNewModal(){
-  openModal('Nuevo usuario','<p class="muted small" style="margin-top:0">Entra con este email y contraseña. Es personal común: solo ve las ferreterías que marques.</p>'+
+  const cur={};if(STORE)cur[STORE]='seller';
+  openModal('Nuevo usuario','<p class="muted small" style="margin-top:0">Entra con este email y contraseña.</p>'+
     '<label class="f full">Email *<input name="email" type="email" required autocomplete="off" placeholder="persona@correo.com"></label>'+
     '<label class="f full">Contraseña * (mínimo 8 caracteres)<input name="password" type="text" required minlength="8" autocomplete="off"></label>'+
-    '<div class="h3" style="margin:12px 0 4px">Puede entrar a</div>'+storeChecks([STORE]),async fd=>{
-    const r=await attempt(()=>sbClient().rpc('admin_create_user',{p_email:fd.email,p_password:fd.password,p_stores:pickedStores(fd)}));
+    '<div class="h3" style="margin:12px 0 4px">Permisos</div>'+accessFields(cur),async fd=>{
+    const r=await attempt(()=>sbClient().rpc('admin_create_user',{p_email:fd.email,p_password:fd.password,p_stores:[]}));
     if(!r.ok)return false;
+    const acc=pickedAccess(fd);
+    if(Object.keys(acc).length){const r2=await attempt(()=>sbClient().rpc('admin_set_access',{p_user:r.data,p_access:acc}));if(!r2.ok){await loadAdmin();return false}}
     toast('Usuario creado');
     await loadAdmin();
   },'Crear usuario');
 }
 function userAccessModal(uid_){
   const u=ADM&&ADM.users.find(x=>x.user_id===uid_);if(!u)return;
-  const cur=ADM.mem.filter(m=>m.user_id===uid_).map(m=>m.store_id);
-  openModal('Accesos de '+u.email,'<p class="muted small" style="margin-top:0">Ferreterías a las que puede entrar:</p>'+storeChecks(cur),async fd=>{
-    const r=await attempt(()=>sbClient().rpc('admin_update_user',{p_user:uid_,p_stores:pickedStores(fd)}));
+  const cur={};ADM.mem.filter(m=>m.user_id===uid_).forEach(m=>{cur[m.store_id]=m.role});
+  openModal('Permisos de '+u.email,accessFields(cur),async fd=>{
+    const r=await attempt(()=>sbClient().rpc('admin_set_access',{p_user:uid_,p_access:pickedAccess(fd)}));
     if(!r.ok)return false;
     await loadAdmin();
   },'Guardar');
 }
 function userPassModal(uid_){
   const u=ADM&&ADM.users.find(x=>x.user_id===uid_);if(!u)return;
-  openModal('Nueva contraseña para '+u.email,'<label class="f full">Contraseña nueva * (mínimo 8 caracteres)<input name="password" type="text" required minlength="8" autocomplete="off"></label><p class="muted small">La persona entra con esta contraseña la próxima vez. Si tiene la sesión abierta, sigue adentro hasta que salga.</p>',async fd=>{
+  openModal('Nueva contraseña para '+u.email,'<label class="f full">Contraseña nueva * (mínimo 8 caracteres)<input name="password" type="text" required minlength="8" autocomplete="off"></label><p class="muted small">La persona entra con esta contraseña la próxima vez. Si tenía la sesión abierta en otro dispositivo, se le cierra.</p>',async fd=>{
     const r=await attempt(()=>sbClient().rpc('admin_set_password',{p_user:uid_,p_password:fd.password}));
     if(!r.ok)return false;
     toast('Contraseña cambiada');
@@ -1629,6 +1723,30 @@ async function userDel(uid_){
   if(!confirm('¿Eliminar el usuario '+u.email+'? Ya no va a poder ingresar. Lo que cargó (ventas, movimientos) se conserva.'))return;
   const r=await attempt(()=>sbClient().rpc('admin_delete_user',{p_user:uid_}));
   if(r.ok){toast('Usuario eliminado');await loadAdmin()}
+}
+function teamAddModal(){
+  openModal('Sumar persona a '+storeName(),'<p class="muted small" style="margin-top:0">La persona tiene que tener usuario'+(ME.admin?'.':' (lo crea el administrador).')+'</p>'+
+    '<label class="f full">Email *<input name="email" type="email" required autocomplete="off" placeholder="persona@correo.com"></label>'+
+    '<label class="f full">Permisos<select name="role">'+roleOptions('seller',false,ME.admin)+'</select></label>',async fd=>{
+    const r=await attempt(()=>sbClient().rpc('set_store_member',{p_store:STORE,p_email:fd.email,p_role:fd.role}));
+    if(!r.ok)return false;
+    toast('Persona sumada');
+    await loadAdmin();
+  },'Sumar');
+}
+function teamRoleModal(uid_){
+  const m=TEAM&&TEAM.list.find(x=>x.user_id===uid_);if(!m)return;
+  openModal('Permisos de '+m.email,'<label class="f full">Plantilla en '+esc(storeName())+'<select name="role">'+roleOptions(m.role,false,ME.admin)+'</select></label>',async fd=>{
+    const r=await attempt(()=>sbClient().rpc('set_store_member',{p_store:STORE,p_email:m.email,p_role:fd.role}));
+    if(!r.ok)return false;
+    await reloadStores();await loadAdmin();
+  },'Guardar');
+}
+async function teamDel(uid_){
+  const m=TEAM&&TEAM.list.find(x=>x.user_id===uid_);if(!m)return;
+  if(!confirm('¿Quitar a '+m.email+' de '+storeName()+'? Ya no va a poder entrar a esta ferretería.'))return;
+  const r=await attempt(()=>sbClient().rpc('remove_store_member',{p_store:STORE,p_user:uid_}));
+  if(r.ok){toast('Quitado del equipo');await loadAdmin()}
 }
 /* ================= Modales ================= */
 function openModal(title,body,onSubmit,okLabel){
@@ -1681,7 +1799,7 @@ function wirePhoto(){
   const inp=$('#phInput'),prev=$('#phPrev'),del=$('#phDel');if(!inp)return;
   inp.addEventListener('change',()=>{
     const f=inp.files&&inp.files[0];if(!f)return;
-    compressImage(f,640,0.72).then(d=>{formPhoto.data=d;formPhoto.changed=true;prev.innerHTML='<img class="thumb" alt="" src="'+d+'">'}).catch(()=>toast('No se pudo leer la imagen','err'));
+    compressImage(f,480,0.7).then(d=>{formPhoto.data=d;formPhoto.changed=true;toast('Foto lista: '+Math.max(1,Math.round(d.length*0.75/1024))+' KB');prev.innerHTML='<img class="thumb" alt="" src="'+d+'">'}).catch(()=>toast('No se pudo leer la imagen','err'));
     inp.value='';
   });
   del.addEventListener('click',()=>{formPhoto.data=null;formPhoto.changed=true;prev.innerHTML='<div class="thumb">'+ic('box',26)+'</div>'});
@@ -1691,8 +1809,9 @@ async function applyFormPhoto(p){
   if(!formPhoto||!formPhoto.changed)return null;
   const old=p.photoPath||null;
   if(formPhoto.data){
-    const path=STORE+'/'+p.id+'-'+Date.now().toString(36)+'.jpg';   // carpeta por ferretería (lo exige la base)
-    const r=await sb.storage.from(BUCKET).upload(path,dataUrlToBlob(formPhoto.data),{contentType:'image/jpeg',cacheControl:'31536000'});
+    const blob=dataUrlToBlob(formPhoto.data),webp=blob.type==='image/webp';
+    const path=STORE+'/'+p.id+'-'+Date.now().toString(36)+(webp?'.webp':'.jpg');   // carpeta por ferretería (lo exige la base)
+    const r=await sb.storage.from(BUCKET).upload(path,blob,{contentType:webp?'image/webp':'image/jpeg',cacheControl:'31536000'});
     if(r.error)throw r.error;
     p.photoPath=path;p._uploaded=path;
   } else p.photoPath=null;
@@ -1947,9 +2066,16 @@ async function importCSV(text){
   if(!res.ok)return;
   toast('Importación lista: '+created+' nuevos, '+updated+' actualizados'+(skipped?', '+skipped+' omitidos':''));
 }
-function exportJSON(){
+async function exportJSON(){
   const stamp=ymd(new Date());
-  download('respaldo-ferreteria-jr-'+stamp+'.json',JSON.stringify(Object.assign({exportedAt:new Date().toISOString()},S)),'application/json');
+  const slug=norm(storeName()).replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'')||'ferreteria';
+  download('respaldo-'+slug+'-'+stamp+'.json',JSON.stringify(Object.assign({exportedAt:new Date().toISOString(),store:{id:STORE,name:storeName()}},S)),'application/json');
+  // deja registrado cuándo fue la última copia (para el recordatorio al salir)
+  try{
+    const r=await sbClient().rpc('mark_backup');
+    const s=STORES.find(x=>x.id===STORE);if(s&&!r.error)s.lastBackup=r.data||new Date().toISOString();
+  }catch(e){}
+  toast('Copia descargada. Guardala en Google Drive.');
 }
 
 
@@ -1985,10 +2111,16 @@ async function seedFromUI(){
 document.addEventListener('click',e=>{
   const t=e.target.closest('[data-act]');if(!t)return;
   const a=t.getAttribute('data-act'),id=t.getAttribute('data-id');
+  if(ACT_PERM[a]&&!can(ACT_PERM[a])){toast('Tu rol en esta ferretería ('+(ROLES[curRole()]||'sin acceso')+') no permite hacer esto','err');return}
   if(a==='overlay'){ if(e.target===t&&!$('#pos'))closeModal(); return }
   switch(a){
     case 'menu': document.body.classList.toggle('navopen');break;
     case 'nav': ui.tab=t.getAttribute('data-tab');document.body.classList.remove('navopen');closeModal();render();window.scrollTo(0,0);if(ui.tab==='usuarios')loadAdmin();break;
+    case 'team-add': teamAddModal();break;
+    case 'team-role': teamRoleModal(id);break;
+    case 'team-del': teamDel(id);break;
+    case 'backup-exit': backupAndExit();break;
+    case 'exit-now': closeModal();doLogout();break;
     case 'store-hide': hideStore();break;
     case 'store-show': showStore(id);break;
     case 'store-show-all': showAllStores();break;
