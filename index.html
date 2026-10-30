@@ -1099,7 +1099,7 @@ async function openHistory(id){
   });
   (p.priceHistory||[]).forEach(x=>ev.push({date:x.date,kind:'Precio',txt:'Costo '+fm(x.cost)+' · venta '+fm(x.price)+(x.reason?' · '+esc(x.reason):''),qty:'',by:x.by||''}));
   ev.sort((a,b)=>String(b.date).localeCompare(String(a.date)));
-  const h='<div class="small muted" style="margin-bottom:8px">Ventas, ingresos, salidas, ajustes, anulaciones y cambios de precio de este producto, con fecha y quién lo hizo. Stock actual: <b>'+fstock(p)+'</b>.</div>'+
+  const h='<div class="small muted" style="margin-bottom:8px">Ventas, ingresos, salidas, ajustes, anulaciones y cambios de precio de este producto, con fecha y quién lo hizo. Stock actual: <b>'+fstock(p)+'</b></div>'+
     (ev.length?'<div class="list hist">'+ev.map(e=>'<div class="it"><div><div><span class="tag">'+e.kind+'</span> '+e.txt+'</div><div class="small muted">'+fdate(e.date)+(e.by?' · '+esc(String(e.by).split('@')[0]):'')+'</div></div><div style="text-align:right">'+e.qty+'</div></div>').join('')+'</div>':'<div class="muted">Sin historial todavía.</div>')+
     (rows.length>=500?'<p class="small muted">Se muestran los últimos 500 movimientos.</p>':'');
   openSheet('Historial de '+p.name,h);
