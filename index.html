@@ -201,6 +201,7 @@ input[type=checkbox]{width:18px;height:18px;accent-color:var(--accent);padding:0
 .payrow{display:grid;grid-template-columns:1.3fr 1fr;gap:10px;margin-bottom:10px;align-items:end}
 .payrow .btn{grid-column:1/-1;justify-self:start}
 .paystat{font-weight:600;margin:8px 0 0}
+.cartmode{margin-top:4px;font-size:12.5px;padding:3px 6px;max-width:100%}
 .cartq{width:84px}.cartp{width:116px}
 
 /* ---------- Responsive ---------- */
@@ -260,6 +261,7 @@ body.locked .app,body.locked .scrim{display:none}
 .who .btn{padding:5px 10px;font-size:12.5px;background:transparent;color:#C8D6E0;border:1px solid rgba(255,255,255,.22)}
 #netbar{position:fixed;top:0;left:0;right:0;z-index:400;background:var(--amber-bg);color:var(--amber);text-align:center;font-weight:700;font-size:13.5px;padding:8px 12px;border-bottom:1px solid #F2D2A4}
 #netbar[hidden]{display:none}
+input[data-num]{text-align:right;font-variant-numeric:tabular-nums}
 /* ---- Lo que el rol no permite, no se muestra ---- */
 body.no-catalog [data-act=new-product],body.no-catalog [data-act=edit-product],body.no-catalog [data-act=del-product],body.no-catalog [data-act=prices],body.no-catalog [data-act=import-csv],body.no-catalog [data-act=seed],body.no-catalog [data-act=cat-add],body.no-catalog [data-act=cat-edit],body.no-catalog [data-act=cat-del],body.no-catalog [data-act=sup-add],body.no-catalog [data-act=sup-edit],body.no-catalog [data-act=sup-del],body.no-catalog [data-act=pm-add],body.no-catalog [data-act=pm-edit],body.no-catalog [data-act=pm-del],
 body.no-stock [data-act=move],
@@ -357,7 +359,7 @@ const SB_URL='https://mxwwiaajnosawmowymhx.supabase.co';
 const SB_KEY='sb_publishable_Ph6MX2UpG8p0swaVS7MsgA_KERSjHaQ';   // clave pública: está pensada para ir en la página
 const BUCKET='product-photos';
 let sb=null,USER=null,RT=null,rtTimer=null,rtSet={};
-let STORE=null,STORES=[],ME={admin:false},ADM=null,MYROLES={},TEAM=null;   // ferretería elegida, las que puede ver, y datos de administración
+let STORE=null,STORES=[],ME={admin:false},ADM=null,MYROLES={},TEAM=null,DELMODE=null;   // DELMODE: 'admin' borra ferreterías, 'key' con clave maestra   // ferretería elegida, las que puede ver, y datos de administración
 const STORE_KEY='ferreteria-ultima',HIDE_KEY='ferreteria-ocultas';
 // Plantillas de permisos por ferretería
 const ROLES={owner:'Dueño',manager:'Encargado',seller:'Vendedor',viewer:'Solo lectura',admin:'Administrador'};
@@ -391,13 +393,13 @@ const N=v=>v==null?0:Number(v);
 function mCat(r){return {id:r.id,name:r.name}}
 function mSup(r){return {id:r.id,name:r.name,phone:r.phone||'',url:r.url||'',notes:r.notes||''}}
 function mPay(r){return {id:r.id,name:r.name,type:r.type,fee:N(r.fee),days:N(r.days),active:r.active!==false}}
-function mProd(r){return {id:r.id,sku:r.sku,name:r.name,categoryId:r.category_id||'',supplierId:r.supplier_id||'',brand:r.brand||'',unit:r.unit||'unidad',location:r.location||'',stock:N(r.stock),min:N(r.min_stock),ideal:N(r.ideal_stock),cost:N(r.cost),price:N(r.price),buyUrl:r.buy_url||'',notes:r.notes||'',review:r.review||'',active:r.active!==false,photoPath:r.photo_path||null,priceHistory:Array.isArray(r.price_history)?r.price_history:[],createdAt:r.created_at,updatedAt:r.updated_at}}
+function mProd(r){return {id:r.id,sku:r.sku,name:r.name,categoryId:r.category_id||'',supplierId:r.supplier_id||'',brand:r.brand||'',unit:r.unit||'unidad',location:r.location||'',stock:N(r.stock),min:N(r.min_stock),ideal:N(r.ideal_stock),cost:N(r.cost),price:N(r.price),buyUrl:r.buy_url||'',notes:r.notes||'',review:r.review||'',active:r.active!==false,photoPath:r.photo_path||null,packQty:N(r.pack_qty)||1,loosePrice:r.loose_price==null?null:N(r.loose_price),priceHistory:Array.isArray(r.price_history)?r.price_history:[],createdAt:r.created_at,updatedAt:r.updated_at}}
 function mMov(r){return {id:r.id,productId:r.product_id,name:r.name,unit:r.unit,type:r.type,qty:N(r.qty),delta:N(r.delta),after:N(r.stock_after),reason:r.reason||'',note:r.note||'',date:r.created_at,by:r.by_email||''}}
 function mSale(r){return {id:r.id,number:r.number,date:r.date,sessionId:r.session_id,items:r.items||[],subtotal:N(r.subtotal),discount:N(r.discount),total:N(r.total),payments:r.payments||[],customer:r.customer||'',note:r.note||'',voided:!!r.voided,voidedAt:r.voided_at,by:r.by_email||''}}
 function mSet(r){return {id:r.id,saleId:r.sale_id,saleNumber:r.sale_number,methodId:r.method_id||'',methodName:r.method_name,kind:r.kind,gross:N(r.gross),fee:N(r.fee),net:N(r.net),date:r.date,expected:r.expected,status:r.status,settledDate:r.settled_date||'',received:r.received==null?null:N(r.received),collectedVia:r.collected_via||'',customer:r.customer||''}}
 function mSess(r){return {id:r.id,openedAt:r.opened_at,opening:N(r.opening),closedAt:r.closed_at,counted:r.counted==null?null:N(r.counted),expected:r.expected==null?null:N(r.expected),diff:r.diff==null?null:N(r.diff),note:r.note||'',summary:r.summary||null,moves:Array.isArray(r.moves)?r.moves:[],by:r.by_email||''}}
 function prodRow(p,withStock){
-  const o={id:p.id,sku:p.sku,name:p.name,category_id:p.categoryId||null,supplier_id:p.supplierId||null,brand:p.brand||'',unit:p.unit||'unidad',location:p.location||'',min_stock:p.min||0,ideal_stock:p.ideal||0,cost:p.cost||0,price:p.price||0,buy_url:p.buyUrl||'',notes:p.notes||'',review:p.review||'',active:p.active!==false,photo_path:p.photoPath||null,price_history:p.priceHistory||[]};
+  const o={id:p.id,sku:p.sku,name:p.name,category_id:p.categoryId||null,supplier_id:p.supplierId||null,brand:p.brand||'',unit:p.unit||'unidad',location:p.location||'',min_stock:p.min||0,ideal_stock:p.ideal||0,cost:p.cost||0,price:p.price||0,buy_url:p.buyUrl||'',notes:p.notes||'',review:p.review||'',active:p.active!==false,photo_path:p.photoPath||null,price_history:p.priceHistory||[],pack_qty:p.packQty>0?p.packQty:1,loose_price:p.packQty>1&&p.loosePrice!=null?p.loosePrice:null};
   if(withStock)o.stock=p.stock||0;   // el stock de un producto existente solo cambia con movimientos (funciones del servidor)
   return o;
 }
@@ -542,6 +544,7 @@ async function loadAccess(){
   const mm=await c.from('memberships').select('*').eq('user_id',USER.id);
   if(mm.error)throw mm.error;
   MYROLES={};(mm.data||[]).forEach(m=>{MYROLES[m.store_id]=m.role||'manager'});
+  try{const dm=await c.rpc('delete_store_mode');DELMODE=dm.error?null:(dm.data||null)}catch(e){DELMODE=null}
 }
 function renderStoreSel(){
   const sel=$('#storeSel');if(!sel)return;
@@ -595,7 +598,7 @@ async function enter(user){
   await startStore(first.id);
 }
 function leave(){
-  stopRealtime();USER=null;ready=false;STORE=null;STORES=[];ME={admin:false};ADM=null;MYROLES={};TEAM=null;applyPermClasses();
+  stopRealtime();USER=null;ready=false;STORE=null;STORES=[];ME={admin:false};ADM=null;MYROLES={};TEAM=null;DELMODE=null;applyPermClasses();
   try{if(sb&&sb._setStore)sb._setStore(null)}catch(e){}
   resetView();
   $('#view').innerHTML='';
@@ -705,12 +708,41 @@ function ymd(d){d=new Date(d);return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'
 function fday(s){const p=String(s||'').split('-');return p.length===3?p[2]+'/'+p[1]+'/'+p[0]:''}
 function startOfDay(d){const x=new Date(d);x.setHours(0,0,0,0);return x}
 function addDays(d,n){const x=new Date(d);x.setDate(x.getDate()+n);return x}
-function num(v){
-  let s=String(v==null?'':v).trim().replace(/\$/g,'').replace(/\s/g,'');
-  if(s==='')return 0;
-  if(s.indexOf(',')>-1&&s.indexOf('.')>-1) s=s.replace(/\./g,'').replace(',','.');
-  else if(s.indexOf(',')>-1) s=s.replace(',','.');
-  const n=parseFloat(s);return isNaN(n)?0:n;
+// Lee números escritos a la argentina (1.234,56) o con punto decimal (1234.56), con o sin $.
+// mode: 'ar' = punto de miles y coma decimal · 'us' = coma de miles y punto decimal · 'auto' = lo deduce.
+function parseNum(v,mode){
+  let s=String(v==null?'':v).trim().replace(/\$/g,'').replace(/[\s\u00a0']/g,'');
+  if(s==='')return NaN;
+  let neg=false;if(/^\(.*\)$/.test(s)){neg=true;s=s.slice(1,-1)}
+  if(s[0]==='-'){neg=!neg;s=s.slice(1)}else if(s[0]==='+')s=s.slice(1);
+  if(!/^[0-9.,]+$/.test(s)||!/[0-9]/.test(s))return NaN;
+  const hasC=s.indexOf(',')>-1,hasD=s.indexOf('.')>-1;
+  if(mode==='ar')s=s.replace(/\./g,'').replace(',','.');
+  else if(mode==='us')s=s.replace(/,/g,'');
+  else if(hasC&&hasD){ // el último separador es el decimal
+    if(s.lastIndexOf(',')>s.lastIndexOf('.'))s=s.replace(/\./g,'').replace(',','.');else s=s.replace(/,/g,'');
+  } else if(hasC){
+    s=/^\d{1,3}(,\d{3}){2,}$/.test(s)?s.replace(/,/g,''):s.replace(',','.');
+  } else if(hasD){
+    if((s.match(/\./g)||[]).length>1)s=s.replace(/\./g,'');              // 1.234.567
+    else if(/^[1-9]\d{0,2}\.\d{3}$/.test(s))s=s.replace('.','');          // 1.500 = mil quinientos
+  }
+  if((s.match(/\./g)||[]).length>1)return NaN;
+  const n=parseFloat(s);if(isNaN(n))return NaN;
+  return neg?-n:n;
+}
+function num(v,mode){const n=parseNum(v,mode);return isNaN(n)?0:n}
+// Para mostrar un número dentro de un campo: coma decimal, sin separador de miles (así se lee igual al volver a guardarlo)
+function inNum(v){if(v===''||v==null)return '';const n=Number(v);if(isNaN(n))return '';return String(Math.round(n*10000)/10000).replace('.',',')}
+// Detecta el formato numérico de todo un archivo (para no mezclar 1.500 = mil quinientos con 1.5 = uno y medio)
+function detectNumFormat(cells){
+  let ar=0,us=0;
+  cells.forEach(c=>{
+    const s=String(c||'').trim().replace(/\$/g,'').replace(/\s/g,'');if(!s)return;
+    if(/\d,\d{1,2}$/.test(s)||/\d,\d{4,}$/.test(s)||/\.\d{3},\d+$/.test(s))ar++;
+    else if(/\d\.\d{1,2}$/.test(s)||/\d\.\d{4,}$/.test(s)||/,\d{3}\.\d+$/.test(s))us++;
+  });
+  if(ar&&!us)return 'ar';if(us&&!ar)return 'us';return 'auto';
 }
 function norm(s){return String(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^a-z0-9 ]/g,' ').replace(/\s+/g,' ').trim()}
 function safeUrl(u){
@@ -802,6 +834,22 @@ async function applyMovement(p,type,qty,reason,note){
   else toast('Movimiento registrado');
   return true;
 }
+// Venta suelta: precio por unidad (el cargado, o el de la caja dividido por las unidades que trae)
+function isPack(p){return !!p&&(p.packQty||1)>1}
+function unitPrice(p){if(!isPack(p))return p.price||0;return p.loosePrice!=null?p.loosePrice:round2((p.price||0)/p.packQty)}
+function unitCost(p){return isPack(p)?(p.cost||0)/p.packQty:(p.cost||0)}
+// Stock con fracciones: "2 caja + 350 u."
+function fstock(p,v){
+  v=v==null?p.stock:v;
+  if(isPack(p)){
+    const whole=Math.floor(v+1e-7),rest=Math.round((v-whole)*p.packQty);
+    if(rest>0&&rest<p.packQty)return (whole?fq(whole)+' '+esc(p.unit)+' + ':'')+fq(rest)+' u.';
+    if(rest>=p.packQty)return fq(whole+1)+' '+esc(p.unit);
+  }
+  return fq(v)+' '+esc(p.unit);
+}
+function looseInfo(p){return isPack(p)?'<div class="small muted">Suelto: '+fm(unitPrice(p))+' c/u ('+fq(p.packQty)+' por '+esc(p.unit)+')</div>':''}
+function iq(i){return i.stockQty!=null?Number(i.stockQty):i.qty}   // cantidad en la unidad del stock
 function setPrices(p,cost,price,reason){
   cost=round2(cost);price=round2(price);
   if(cost===(p.cost||0)&&price===(p.price||0)&&p.priceHistory&&p.priceHistory.length) return;
@@ -826,7 +874,7 @@ function cajaTotals(sess){
 function cajaOpenModal(after){
   const last=S.cash.sessions.find(s=>s.closedAt);
   openModal('Abrir caja',
-    '<label class="f">Efectivo inicial en la caja (fondo)<input name="opening" type="number" step="any" min="0" required value="'+(last&&last.counted!=null?last.counted:0)+'"></label>'+
+    '<label class="f">Efectivo inicial en la caja (fondo)<input name="opening" type="text" inputmode="decimal" autocomplete="off" data-num required value="'+inNum((last&&last.counted!=null?last.counted:0))+'"></label>'+
     '<p class="muted small">Contá el efectivo que hay ahora en el cajón. Se propone lo que quedó en el último cierre.</p>',
     async fd=>{
       const id=uid();
@@ -839,7 +887,7 @@ function cajaOpenModal(after){
 }
 function cajaMoveModal(type){
   openModal(type==='in'?'Ingreso de efectivo':'Egreso de efectivo',
-    '<div class="fgrid"><label class="f">Monto<input name="amount" type="number" step="any" min="0" required></label>'+
+    '<div class="fgrid"><label class="f">Monto<input name="amount" type="text" inputmode="decimal" autocomplete="off" data-num required></label>'+
     '<label class="f">Concepto<input name="concept" list="cc" required value="'+(type==='out'?'Pago a proveedor':'Aporte de efectivo')+'"><datalist id="cc">'+CAJA_CONCEPTS.map(c=>'<option value="'+esc(c)+'">').join('')+'</datalist></label>'+
     '<label class="f full">Nota (opcional)<input name="note"></label></div>',
     async fd=>{
@@ -857,7 +905,7 @@ function cajaCloseModal(){
   openModal('Cerrar caja',
     '<div class="kv"><div><span>Fondo inicial</span><b>'+fm(sess.opening)+'</b></div><div><span>Ventas en efectivo</span><b>'+fm(t.cash)+'</b></div><div><span>Ingresos manuales</span><b>'+fm(t.inn)+'</b></div><div><span>Egresos manuales</span><b>'+fm(t.out)+'</b></div></div>'+
     '<div class="banner info" style="margin:0 0 12px">Efectivo que debería haber: <b>'+fm(t.expected)+'</b></div>'+
-    '<div class="fgrid"><label class="f">Efectivo contado<input name="counted" type="number" step="any" min="0" required value="'+t.expected+'"></label>'+
+    '<div class="fgrid"><label class="f">Efectivo contado<input name="counted" type="text" inputmode="decimal" autocomplete="off" data-num required value="'+inNum(t.expected)+'"></label>'+
     '<label class="f">Nota (opcional)<input name="note" placeholder="Ej: faltante de cambio"></label></div>'+
     '<p class="muted small">Ventas totales de este turno: <b>'+fm(t.total)+'</b> en '+t.count+' venta'+(t.count===1?'':'s')+'. Lo que no es efectivo (tarjetas, transferencias, fiado) no se cuenta acá: lo ves en Liquidaciones.</p>',
     async fd=>{
@@ -881,7 +929,7 @@ async function createSale(cartData){
   if(!sess){toast('Abrí la caja para vender','err');return null}
   if(!cartData.saleId)cartData.saleId=uid();   // si se reintenta por un corte de internet, no se duplica la venta
   const payload={id:cartData.saleId,session_id:sess.id,
-    items:cartData.items.map(it=>({productId:it.pid,qty:it.qty,price:round2(it.price)})),
+    items:cartData.items.map(it=>({productId:it.pid,qty:it.qty,price:round2(it.price),loose:!!it.loose})),
     discount:round2(cartData.discount||0),
     payments:cartData.pay.filter(p=>p.amount>0).map(p=>({methodId:p.mid,amount:round2(p.amount)})),
     customer:(cartData.customer||'').trim(),note:(cartData.note||'').trim()};
@@ -917,7 +965,7 @@ async function voidSale(id){
 }
 function saleText(s){
   let t=storeName()+' · Venta #'+s.number+' · '+fdate(s.date)+'\n';
-  s.items.forEach(i=>{t+='- '+i.name+' x'+fq(i.qty)+' '+i.unit+' = '+fm(i.qty*i.price)+'\n'});
+  s.items.forEach(i=>{t+='- '+i.name+(i.loose?' (suelto)':'')+' x'+fq(i.qty)+' '+i.unit+' = '+fm(i.qty*i.price)+'\n'});
   if(s.discount)t+='Descuento: -'+fm(s.discount)+'\n';
   t+='TOTAL: '+fm(s.total)+'\nPago: '+s.payments.map(p=>p.methodName+' '+fm(p.amount)).join(' + ');
   return t;
@@ -1008,14 +1056,14 @@ function viewPanel(){
   if(!need.length) h+='<div class="muted">Nada pendiente.</div>';
   else h+='<div class="list">'+need.slice().sort((a,b)=>a.stock-b.stock).slice(0,8).map(p=>
     '<div class="it"><div class="pcell">'+thumb(p,36)+'<div><div class="pname linkish" data-act="ficha" data-id="'+p.id+'">'+esc(p.name)+'</div><div class="small muted">'+esc(catName(p.categoryId))+' · mínimo '+fq(p.min)+'</div></div></div>'+
-    '<div style="text-align:right">'+badge(p)+'<div class="small"><b>'+fq(p.stock)+'</b> '+esc(p.unit)+'</div></div></div>').join('')+'</div>';
+    '<div style="text-align:right">'+badge(p)+'<div class="small"><b>'+fstock(p)+'</b></div></div></div>').join('')+'</div>';
   h+='</div><div class="card"><div class="h3">Últimas ventas</div>';
   const recent=S.sales.filter(s=>!s.voided).slice(0,7);
   if(!recent.length) h+='<div class="muted">Todavía no hay ventas registradas.</div>';
   else h+='<div class="list">'+recent.map(s=>'<div class="it linkish" data-act="view-sale" data-id="'+s.id+'"><div><div class="pname">#'+s.number+' · '+esc(s.customer||'Mostrador')+'</div><div class="small muted">'+fdate(s.date)+' · '+esc(s.payments.map(p=>p.methodName).join(' + '))+'</div></div><b>'+fm(s.total)+'</b></div>').join('')+'</div>';
   h+='</div></div>';
   const since=startOfDay(addDays(new Date(),-29));const agg={};
-  S.sales.forEach(s=>{if(s.voided||new Date(s.date)<since)return;s.items.forEach(i=>{const a=agg[i.productId]=agg[i.productId]||{name:i.name,qty:0,rev:0,unit:i.unit,id:i.productId};a.qty+=i.qty;a.rev+=i.qty*i.price})});
+  S.sales.forEach(s=>{if(s.voided||new Date(s.date)<since)return;s.items.forEach(i=>{const a=agg[i.productId]=agg[i.productId]||{name:i.name,qty:0,rev:0,unit:i.unit,id:i.productId};a.qty+=iq(i);if(i.stockUnit)a.unit=i.stockUnit;a.rev+=i.qty*i.price})});
   const top=Object.keys(agg).map(k=>agg[k]).sort((a,b)=>b.rev-a.rev).slice(0,6);
   h+='<div class="grid2"><div class="card"><div class="h3">Más vendidos (30 días)</div>';
   if(!top.length)h+='<div class="muted">Se arma solo a medida que registres ventas.</div>';
@@ -1070,7 +1118,7 @@ function viewSaleModal(id){
   let h='<div class="kv"><div><span>Fecha</span><b style="font-size:15px">'+fdate(s.date)+'</b></div><div><span>Cliente</span><b style="font-size:15px">'+esc(s.customer||'Mostrador')+'</b></div><div><span>Total</span><b>'+fm(s.total)+'</b></div><div><span>Ganancia estimada</span><b>'+fm(profitOf(s))+'</b></div></div>'+
   (s.voided?'<div class="banner">Venta anulada el '+fdate(s.voidedAt)+'. El stock fue repuesto.</div>':'')+
   '<table class="tbl"><thead><tr><th>Producto</th><th class="num">Cant.</th><th class="num">Precio</th><th class="num">Subtotal</th></tr></thead><tbody>'+
-  s.items.map(i=>'<tr><td class="first">'+esc(i.name)+'<div class="sku">'+esc(i.sku||'')+'</div></td><td data-label="Cant." class="num">'+fq(i.qty)+' '+esc(i.unit)+'</td><td data-label="Precio" class="num">'+fm(i.price)+'</td><td data-label="Subtotal" class="num">'+fm(i.qty*i.price)+'</td></tr>').join('')+'</tbody></table>'+
+  s.items.map(i=>'<tr><td class="first">'+esc(i.name)+(i.loose?' <span class="tag">suelto</span>':'')+'<div class="sku">'+esc(i.sku||'')+'</div></td><td data-label="Cant." class="num">'+fq(i.qty)+' '+esc(i.unit)+'</td><td data-label="Precio" class="num">'+fm(i.price)+'</td><td data-label="Subtotal" class="num">'+fm(i.qty*i.price)+'</td></tr>').join('')+'</tbody></table>'+
   '<div style="text-align:right;margin-top:8px">'+(s.discount?'<div class="muted">Subtotal '+fm(s.subtotal)+' · Descuento −'+fm(s.discount)+'</div>':'')+'<div style="font-size:20px;font-weight:900">Total '+fm(s.total)+'</div></div>'+
   '<div class="sec"><h4>Formas de pago</h4>'+s.payments.map(p=>'<div class="gh" style="margin:0"><span>'+esc(p.methodName)+'</span><b>'+fm(p.amount)+'</b></div>').join('')+'</div>'+
   (s.note?'<div class="sec"><h4>Nota</h4>'+esc(s.note)+'</div>':'')+(s.by?'<div class="sec small muted">Registrada por '+esc(s.by)+'</div>':'')+
@@ -1092,7 +1140,7 @@ function openPOS(){
   $('#modalRoot').innerHTML='<div class="overlay"><div class="modal big" id="pos"><div class="mh"><h3>Nueva venta</h3><button type="button" class="x" data-act="pos-cancel" aria-label="Cerrar">'+ic('x',20)+'</button></div><div class="mb"><div class="posgrid"><div class="posL">'+
     '<div class="search">'+ic('search',18)+'<input id="posq" placeholder="Buscar producto por nombre o código, o escanear el código de barras…" autocomplete="off"></div><div id="posRes"></div><div id="posCart" style="margin-top:12px"></div></div>'+
     '<div class="posR"><div class="fgrid one"><label class="f">Cliente (opcional)<input data-pos="customer" placeholder="Obligatorio si es fiado"></label><label class="f">Nota (opcional)<input data-pos="note"></label></div>'+
-    '<div class="tots"><div><span class="muted">Subtotal</span><b id="posSub">$0</b></div><div><span class="muted">Descuento</span><span class="row" style="gap:6px;flex-wrap:nowrap"><button type="button" class="btn sm" data-act="pos-pct" data-p="5">5%</button><button type="button" class="btn sm" data-act="pos-pct" data-p="10">10%</button><input id="posDisc" data-pos="discount" type="number" step="any" min="0" placeholder="$ 0" aria-label="Descuento en pesos"></span></div><div class="grand"><span>Total</span><span id="posTotal">$0</span></div></div>'+
+    '<div class="tots"><div><span class="muted">Subtotal</span><b id="posSub">$0</b></div><div><span class="muted">Descuento</span><span class="row" style="gap:6px;flex-wrap:nowrap"><button type="button" class="btn sm" data-act="pos-pct" data-p="5">5%</button><button type="button" class="btn sm" data-act="pos-pct" data-p="10">10%</button><input id="posDisc" data-pos="discount" type="text" inputmode="decimal" autocomplete="off" data-num placeholder="$ 0" aria-label="Descuento en pesos"></span></div><div class="grand"><span>Total</span><span id="posTotal">$0</span></div></div>'+
     '<div class="sec" style="margin-top:14px"><h4>Forma de pago</h4><div id="posPay"></div><div id="posPayStatus" class="paystat"></div></div></div></div></div>'+
     '<div class="mf"><button type="button" class="btn ghost" data-act="pos-cancel">Cancelar</button><button type="button" class="btn primary" data-act="pos-confirm">'+ic('check',17)+'Confirmar venta</button></div></div></div>';
   renderCart();renderPay();updateTotals();
@@ -1102,13 +1150,15 @@ function renderRes(){
   const q=norm($('#posq').value),box=$('#posRes');
   if(!q){box.innerHTML='';return}
   const list=S.products.filter(p=>p.active!==false&&q.split(' ').every(w=>norm([p.name,p.sku,p.brand,p.location].join(' ')).indexOf(w)>-1)).slice(0,8);
-  box.innerHTML=list.length?'<div class="res">'+list.map(p=>'<div class="rrow" data-act="pos-add" data-id="'+p.id+'">'+thumb(p,36)+'<div class="grow"><div class="pname">'+esc(p.name)+'</div><div class="small muted">'+esc(p.sku)+' · stock '+fq(p.stock)+' '+esc(p.unit)+'</div></div><b>'+(p.price?fm(p.price):'sin precio')+'</b></div>').join('')+'</div>':'<div class="small muted" style="margin-top:6px">Sin resultados.</div>';
+  box.innerHTML=list.length?'<div class="res">'+list.map(p=>'<div class="rrow" data-act="pos-add" data-id="'+p.id+'">'+thumb(p,36)+'<div class="grow"><div class="pname">'+esc(p.name)+'</div><div class="small muted">'+esc(p.sku)+' · stock '+fstock(p)+'</div></div>'+(isPack(p)?'<button type="button" class="btn sm" data-act="pos-add" data-id="'+p.id+'" data-loose="1" title="Vender por unidad suelta">Suelto '+fm(unitPrice(p))+'</button> ':'')+'<b>'+(p.price?fm(p.price):'sin precio')+'</b></div>').join('')+'</div>':'<div class="small muted" style="margin-top:6px">Sin resultados.</div>';
 }
-function posAdd(id){
+function posAdd(id,loose){
   const p=prod(id);if(!p||!cart)return;
-  const ex=cart.items.find(i=>i.pid===id);
-  if(ex)ex.qty=round2(ex.qty+1);else cart.items.push({pid:id,qty:1,price:p.price||0});
-  if(!p.price)toast('“'+p.name+'” no tiene precio cargado: completalo en la venta','warn');
+  loose=!!loose&&isPack(p);
+  const ex=cart.items.find(i=>i.pid===id&&!!i.loose===loose);
+  const pr=loose?unitPrice(p):(p.price||0);
+  if(ex)ex.qty=round2(ex.qty+1);else cart.items.push({pid:id,qty:1,price:pr,loose});
+  if(!pr)toast('“'+p.name+'” no tiene precio cargado: completalo en la venta','warn');
   const q=$('#posq');q.value='';$('#posRes').innerHTML='';q.focus();
   renderCart();updateTotals();
 }
@@ -1116,22 +1166,27 @@ function renderCart(){
   const box=$('#posCart');if(!box)return;
   if(!cart.items.length){box.innerHTML='<div class="empty small" style="padding:18px">Buscá y agregá productos a la venta.</div>';return}
   box.innerHTML='<table class="tbl"><thead><tr><th>Producto</th><th>Cant.</th><th>Precio unit.</th><th class="num">Subtotal</th><th></th></tr></thead><tbody>'+
-  cart.items.map((it,i)=>{const p=prod(it.pid);const low=it.qty>p.stock;
-    return '<tr><td class="first"><div class="pcell">'+thumb(p,36)+'<div><div class="pname">'+esc(p.name)+'</div><div class="small '+(low?'neg':'muted')+'">Stock: '+fq(p.stock)+' '+esc(p.unit)+(low?' · ¡no alcanza!':'')+'</div></div></div></td>'+
-    '<td data-label="Cant."><input class="cartq" data-pos="qty" data-i="'+i+'" type="number" step="any" min="0" value="'+it.qty+'"></td>'+
-    '<td data-label="Precio"><input class="cartp" data-pos="price" data-i="'+i+'" type="number" step="any" min="0" value="'+it.price+'"></td>'+
+  cart.items.map((it,i)=>{const p=prod(it.pid);const low=cartNeed(p.id)>p.stock+1e-9;
+    return '<tr><td class="first"><div class="pcell">'+thumb(p,36)+'<div><div class="pname">'+esc(p.name)+'</div><div class="small '+(low?'neg':'muted')+'">'+stockHint(p,it,low)+'</div>'+
+    (isPack(p)?'<select class="cartmode" data-pos="mode" data-i="'+i+'" aria-label="Vender por"><option value="pack"'+(it.loose?'':' selected')+'>Por '+esc(p.unit)+' ('+fq(p.packQty)+' u.)</option><option value="u"'+(it.loose?' selected':'')+'>Suelto (por unidad)</option></select>':'')+
+    '</div></div></td>'+
+    '<td data-label="Cant."><input class="cartq" data-pos="qty" data-i="'+i+'" type="text" inputmode="decimal" autocomplete="off" data-num value="'+inNum(it.qty)+'"></td>'+
+    '<td data-label="Precio"><input class="cartp" data-pos="price" data-i="'+i+'" type="text" inputmode="decimal" autocomplete="off" data-num value="'+inNum(it.price)+'"></td>'+
     '<td data-label="Subtotal" class="num"><b id="posLine'+i+'">'+fm(it.qty*it.price)+'</b></td>'+
     '<td><button type="button" class="btn sm icon danger" data-act="pos-rm" data-i="'+i+'" aria-label="Quitar producto">'+ic('x',15)+'</button></td></tr>';
   }).join('')+'</tbody></table>';
 }
+// lo que se lleva de cada producto, en la unidad del stock (sumando cajas y sueltos)
+function cartNeed(pid){const p=prod(pid);return cart.items.filter(i=>i.pid===pid).reduce((a,i)=>a+(i.loose&&isPack(p)?i.qty/p.packQty:i.qty),0)}
+function stockHint(p,it,low){return 'Stock: '+fstock(p)+(it.loose?' · hay '+fq(Math.floor(p.stock*p.packQty+1e-7))+' u.':'')+(low?' · ¡no alcanza!':'')}
 function renderPay(){
   const box=$('#posPay');if(!box)return;
   const act=S.payMethods.filter(m=>m.active!==false);
   box.innerHTML=cart.pay.map((p,i)=>{
     const m=pmObj(p.mid);
     return '<div class="payrow"><label class="f">Forma<select data-pos="paymethod" data-i="'+i+'">'+options(act.concat(m&&m.active===false?[m]:[]),p.mid)+'</select></label>'+
-    '<label class="f">Monto<input data-pos="payamt" data-i="'+i+'" type="number" step="any" min="0" value="'+(p.amount||'')+'"></label>'+
-    (m&&m.type==='cash'?'<label class="f">Recibe (opcional)<input data-pos="payrec" data-i="'+i+'" type="number" step="any" min="0" value="'+(p.received||'')+'"></label>':'<div></div>')+
+    '<label class="f">Monto<input data-pos="payamt" data-i="'+i+'" type="text" inputmode="decimal" autocomplete="off" data-num value="'+inNum((p.amount||''))+'"></label>'+
+    (m&&m.type==='cash'?'<label class="f">Recibe (opcional)<input data-pos="payrec" data-i="'+i+'" type="text" inputmode="decimal" autocomplete="off" data-num value="'+inNum((p.received||''))+'"></label>':'<div></div>')+
     (cart.pay.length>1?'<button type="button" class="btn sm icon danger" data-act="pos-rmpay" data-i="'+i+'" aria-label="Quitar forma de pago">'+ic('x',15)+'</button>':'<div></div>')+'</div>'+
     (m&&m.type==='credit'?'<div class="small neg" style="margin:-4px 0 8px">Cuenta corriente: completá el nombre del cliente. Queda en Liquidaciones como pendiente de cobro.</div>':'');
   }).join('')+'<button type="button" class="btn sm" data-act="pos-addpay">+ Dividir el pago en otra forma</button>';
@@ -1142,7 +1197,7 @@ function updateTotals(){
   $('#posSub').textContent=fm(t.sub);$('#posTotal').textContent=fm(t.total);
   cart.items.forEach((it,i)=>{const el=$('#posLine'+i);if(el)el.textContent=fm(it.qty*it.price)});
   if(cart.pay.length===1&&cart.pay[0].auto){
-    cart.pay[0].amount=t.total;const inp=$('[data-pos="payamt"][data-i="0"]');if(inp)inp.value=t.total||'';
+    cart.pay[0].amount=t.total;const inp=$('[data-pos="payamt"][data-i="0"]');if(inp)inp.value=t.total?inNum(t.total):'';
   }
   updatePayStatus(t);
 }
@@ -1160,6 +1215,10 @@ function updatePayStatus(t){
 function posInput(t){
   if(!cart)return;
   const k=t.getAttribute('data-pos'),i=parseInt(t.getAttribute('data-i'),10);
+  if(k==='mode'){
+    const it=cart.items[i],p=prod(it.pid);it.loose=t.value==='u'&&isPack(p);it.price=it.loose?unitPrice(p):(p.price||0);
+    renderCart();updateTotals();return;
+  }
   if(k==='qty'){cart.items[i].qty=num(t.value)}
   else if(k==='price'){cart.items[i].price=num(t.value)}
   else if(k==='discount'){cart.discount=num(t.value)}
@@ -1170,14 +1229,15 @@ function posInput(t){
     if(cart.pay.length===2){ // con dos formas de pago, la otra se completa sola con el resto
       const j=1-i,rest=Math.max(0,round2(cartTotals().total-cart.pay[i].amount));
       cart.pay[j].amount=rest;cart.pay[j].auto=false;
-      const o=$('[data-pos="payamt"][data-i="'+j+'"]');if(o)o.value=rest||'';
+      const o=$('[data-pos="payamt"][data-i="'+j+'"]');if(o)o.value=rest?inNum(rest):'';
     }
   }
   else if(k==='payrec'){cart.pay[i].received=t.value}
   updateTotals();
   if(k==='qty'){ // actualizar aviso de stock
-    const row=t.closest('tr'),p=prod(cart.items[i].pid),d=row&&row.querySelector('.small');
-    if(d&&p){const low=cart.items[i].qty>p.stock;d.className='small '+(low?'neg':'muted');d.textContent='Stock: '+fq(p.stock)+' '+p.unit+(low?' · ¡no alcanza!':'')}
+    const p=prod(cart.items[i].pid);
+    if(p)cart.items.forEach((it,j)=>{if(it.pid!==p.id)return;const inp=$('[data-pos="qty"][data-i="'+j+'"]'),row=inp&&inp.closest('tr'),d=row&&row.querySelector('.small');
+      if(d){const low=cartNeed(p.id)>p.stock+1e-9;d.className='small '+(low?'neg':'muted');d.innerHTML=stockHint(p,it,low)}});
   }
 }
 let posBusy=false;
@@ -1191,7 +1251,7 @@ async function posConfirm(){
   if(Math.abs(paid-t.total)>0.009){toast('Los pagos ('+fm(paid)+') no coinciden con el total ('+fm(t.total)+')','err');return}
   const hasCredit=cart.pay.some(p=>p.amount>0&&(pmObj(p.mid)||{}).type==='credit');
   if(hasCredit&&!cart.customer.trim()){toast('Para vender en cuenta corriente, completá el nombre del cliente','err');return}
-  const short=cart.items.filter(i=>i.qty>prod(i.pid).stock);
+  const short=[...new Set(cart.items.map(i=>i.pid))].filter(id=>cartNeed(id)>prod(id).stock+1e-9).map(id=>({pid:id}));
   if(short.length&&!confirm('No alcanza el stock de: '+short.map(i=>prod(i.pid).name).join(', ')+'.\n¿Vender igual? El stock quedará en 0.'))return;
   posBusy=true;
   const btn=$('[data-act="pos-confirm"]');if(btn){btn.disabled=true;btn.dataset.lbl=btn.textContent;btn.textContent='Guardando…'}
@@ -1272,7 +1332,7 @@ function settleModal(id){
   if(x.kind==='credit'){
     const methods=S.payMethods.filter(m=>m.active!==false&&m.type!=='credit');
     openModal('Cobrar cuenta corriente',
-      '<p>Venta <b>#'+x.saleNumber+'</b> · '+esc(x.customer||'Sin nombre')+' · Debe <b>'+fm(x.gross)+'</b></p><div class="fgrid"><label class="f">Monto cobrado<input name="amount" type="number" step="any" min="0" required value="'+x.gross+'"></label><label class="f">¿Cómo pagó?<select name="mid">'+options(methods,defaultMethod())+'</select></label></div><p class="muted small">Si paga en efectivo, se suma como ingreso en la caja abierta.</p>',
+      '<p>Venta <b>#'+x.saleNumber+'</b> · '+esc(x.customer||'Sin nombre')+' · Debe <b>'+fm(x.gross)+'</b></p><div class="fgrid"><label class="f">Monto cobrado<input name="amount" type="text" inputmode="decimal" autocomplete="off" data-num required value="'+inNum(x.gross)+'"></label><label class="f">¿Cómo pagó?<select name="mid">'+options(methods,defaultMethod())+'</select></label></div><p class="muted small">Si paga en efectivo, se suma como ingreso en la caja abierta.</p>',
       async fd=>{
         const a=round2(num(fd.amount));if(a<=0){toast('Ingresá el monto cobrado','err');return false}
         const m=pmObj(fd.mid);
@@ -1295,7 +1355,7 @@ function settleModal(id){
       },'Registrar cobro');
   } else {
     openModal('Acreditar liquidación',
-      '<p>Venta <b>#'+x.saleNumber+'</b> · '+esc(x.methodName)+'. Bruto '+fm(x.gross)+(x.fee?' · comisión −'+fm(x.fee):'')+'.</p><div class="fgrid"><label class="f">Monto que te acreditaron<input name="amount" type="number" step="any" min="0" required value="'+x.net+'"></label><label class="f">Fecha de acreditación<input name="date" type="date" required value="'+ymd(new Date())+'"></label></div><p class="muted small">Si el banco o Mercado Pago acreditó un monto distinto, escribí el monto real: la diferencia queda como comisión.</p>',
+      '<p>Venta <b>#'+x.saleNumber+'</b> · '+esc(x.methodName)+'. Bruto '+fm(x.gross)+(x.fee?' · comisión −'+fm(x.fee):'')+'.</p><div class="fgrid"><label class="f">Monto que te acreditaron<input name="amount" type="text" inputmode="decimal" autocomplete="off" data-num required value="'+inNum(x.net)+'"></label><label class="f">Fecha de acreditación<input name="date" type="date" required value="'+ymd(new Date())+'"></label></div><p class="muted small">Si el banco o Mercado Pago acreditó un monto distinto, escribí el monto real: la diferencia queda como comisión.</p>',
       async fd=>{
         const a=round2(num(fd.amount));
         const upd={status:'settled',settled_date:fd.date||ymd(new Date()),received:a};
@@ -1340,8 +1400,8 @@ function pmModal(m){
   openModal(m?'Editar forma de pago':'Nueva forma de pago',
     '<div class="fgrid"><label class="f full">Nombre *<input name="name" required value="'+esc(m?m.name:'')+'" placeholder="Ej: Naranja X, Cuenta DNI, Mercado Pago QR"></label>'+
     '<label class="f full">Tipo<select name="type" id="pmType"><option value="cash"'+(m&&m.type==='cash'?' selected':'')+'>Efectivo (entra a la caja)</option><option value="electronic"'+(!m||m.type==='electronic'?' selected':'')+'>Electrónico (se acredita en tu cuenta)</option><option value="credit"'+(m&&m.type==='credit'?' selected':'')+'>Cuenta corriente / fiado</option></select></label>'+
-    '<label class="f">Comisión %<input name="fee" type="number" step="any" min="0" max="100" value="'+(m?m.fee:0)+'"></label>'+
-    '<label class="f">Días hasta que se acredita<input name="days" type="number" step="1" min="0" value="'+(m?m.days:0)+'"></label>'+
+    '<label class="f">Comisión %<input name="fee" type="text" inputmode="decimal" autocomplete="off" data-num value="'+inNum((m?m.fee:0))+'"></label>'+
+    '<label class="f">Días hasta que se acredita<input name="days" type="text" inputmode="decimal" autocomplete="off" data-num value="'+inNum((m?m.days:0))+'"></label>'+
     '<label class="f chk full"><input type="checkbox" name="active"'+(!m||m.active!==false?' checked':'')+'> Disponible para cobrar en ventas</label></div>',
     async fd=>{
       const n=fd.name.trim();if(!n)return false;
@@ -1414,9 +1474,9 @@ function renderInvRows(){
     '<tr><td class="first"><div class="pcell">'+thumb(p)+'<div><div class="pname linkish" data-act="ficha" data-id="'+p.id+'">'+esc(p.name)+'</div><div class="sku">'+esc(p.sku)+(p.brand?' · '+esc(p.brand):'')+(supName(p.supplierId)?' · '+esc(supName(p.supplierId)):'')+(p.review?' <span class="badge low" title="'+esc(p.review)+'">Revisar</span>':'')+'</div></div></div></td>'+
       '<td data-label="Categoría"><span class="tag">'+esc(catName(p.categoryId))+'</span></td>'+
       '<td data-label="Ubicación">'+esc(p.location||'—')+'</td>'+
-      '<td data-label="Stock" class="num"><span class="stockn">'+fq(p.stock)+'</span> <span class="muted small">'+esc(p.unit)+'</span><div class="small muted">mín. '+fq(p.min)+'</div></td>'+
+      '<td data-label="Stock" class="num"><span class="stockn">'+fstock(p)+'</span><div class="small muted">mín. '+fq(p.min)+'</div></td>'+
       '<td data-label="Estado">'+badge(p)+'</td>'+
-      '<td data-label="Precio" class="num">'+(p.price?fm(p.price):'—')+'</td>'+
+      '<td data-label="Precio" class="num">'+(p.price?fm(p.price):'—')+(isPack(p)?'<div class="small muted">'+fm(unitPrice(p))+' c/u</div>':'')+'</td>'+
       '<td><div class="acts"><button class="btn sm" data-act="move" data-id="'+p.id+'" data-type="out">− Salida</button>'+
       '<button class="btn sm" data-act="move" data-id="'+p.id+'" data-type="in">+ Ingreso</button>'+
       '<button class="btn sm icon" data-act="edit-product" data-id="'+p.id+'" title="Editar" aria-label="Editar">'+ic('edit',15)+'</button></div></td></tr>'
@@ -1429,15 +1489,15 @@ function openFicha(id){
   const sup=supObj(p.supplierId);
   const margin=p.cost>0&&p.price>0?Math.round((p.price-p.cost)/p.price*100):null;
   const lines=saleLines(id);
-  const units=lines.reduce((a,l)=>a+l.it.qty,0),rev=lines.reduce((a,l)=>a+l.it.qty*l.it.price,0),gain=lines.reduce((a,l)=>a+l.it.qty*(l.it.price-l.it.cost),0);
+  const units=lines.reduce((a,l)=>a+iq(l.it),0),rev=lines.reduce((a,l)=>a+l.it.qty*l.it.price,0),gain=lines.reduce((a,l)=>a+l.it.qty*(l.it.price-l.it.cost),0);
   const since=startOfDay(addDays(new Date(),-29));
-  const u30=lines.filter(l=>new Date(l.sale.date)>=since).reduce((a,l)=>a+l.it.qty,0);
+  const u30=lines.filter(l=>new Date(l.sale.date)>=since).reduce((a,l)=>a+iq(l.it),0);
   const links=[];
   const bu=safeUrl(p.buyUrl);if(bu)links.push('<a class="btn sm" href="'+esc(bu)+'" target="_blank" rel="noopener">'+ic('link',15)+'Ver este producto en el proveedor</a>');
   const su=sup?safeUrl(sup.url):'';if(su)links.push('<a class="btn sm" href="'+esc(su)+'" target="_blank" rel="noopener">'+ic('globe',15)+'Sitio de '+esc(sup.name)+'</a>');
   if(sup&&sup.phone)links.push('<a class="btn sm" href="https://wa.me/'+waNum(sup.phone)+'" target="_blank" rel="noopener">'+ic('chat',15)+'WhatsApp '+esc(sup.name)+'</a>');
   let h='<div class="photo-row">'+thumb(p,96)+'<div class="grow"><div class="pname" style="font-size:18px">'+esc(p.name)+'</div><div class="sku">'+esc(p.sku)+(p.brand?' · '+esc(p.brand):'')+'</div><div style="margin-top:6px"><span class="tag">'+esc(catName(p.categoryId))+'</span> '+badge(p)+'</div></div></div>'+
-  (p.review?'<div class="banner" style="margin:14px 0 0"><div><b>Para revisar:</b> '+esc(p.review)+'</div></div>':'')+'<div class="kv"><div><span>Stock actual</span><b>'+fq(p.stock)+' '+esc(p.unit)+'</b></div><div><span>Mínimo / ideal</span><b>'+fq(p.min)+' / '+(p.ideal?fq(p.ideal):'—')+'</b></div><div><span>Precio de venta</span><b>'+(p.price?fm(p.price):'—')+'</b></div><div><span>Costo</span><b>'+(p.cost?fm(p.cost):'—')+'</b></div><div><span>Margen</span><b>'+(margin!==null?margin+'%':'—')+'</b></div><div><span>Ubicación</span><b style="font-size:15px">'+esc(p.location||'—')+'</b></div></div>'+
+  (p.review?'<div class="banner" style="margin:14px 0 0"><div><b>Para revisar:</b> '+esc(p.review)+'</div></div>':'')+'<div class="kv"><div><span>Stock actual</span><b>'+fstock(p)+'</b></div><div><span>Mínimo / ideal</span><b>'+fq(p.min)+' / '+(p.ideal?fq(p.ideal):'—')+'</b></div><div><span>Precio de venta'+(isPack(p)?' ('+esc(p.unit)+')':'')+'</span><b>'+(p.price?fm(p.price):'—')+'</b></div>'+(isPack(p)?'<div><span>Precio suelto (por unidad)</span><b>'+fm(unitPrice(p))+'</b></div><div><span>Unidades por '+esc(p.unit)+'</span><b>'+fq(p.packQty)+'</b></div>':'')+'<div><span>Costo</span><b>'+(p.cost?fm(p.cost):'—')+'</b></div><div><span>Margen</span><b>'+(margin!==null?margin+'%':'—')+'</b></div><div><span>Ubicación</span><b style="font-size:15px">'+esc(p.location||'—')+'</b></div></div>'+
   '<div class="sec"><h4>Proveedor habitual</h4>'+(sup?'<div><b>'+esc(sup.name)+'</b>'+(sup.phone?' · '+esc(sup.phone):'')+'</div>':'<div class="muted">Sin proveedor asignado.</div>')+(links.length?'<div class="row" style="margin-top:8px">'+links.join('')+'</div>':'')+'</div>'+
   (p.notes?'<div class="sec"><h4>Notas</h4>'+esc(p.notes)+'</div>':'')+
   '<div class="row sec noprint"><button class="btn" data-act="edit-product" data-id="'+p.id+'">'+ic('edit',16)+'Editar</button><button class="btn" data-act="move" data-id="'+p.id+'" data-type="in">+ Ingreso</button><button class="btn" data-act="move" data-id="'+p.id+'" data-type="out">− Salida</button></div>'+
@@ -1540,6 +1600,7 @@ function viewAjustes(){
   '<div class="row"><button class="btn" data-act="logout">'+ic('lock',16)+'Salir</button></div></div><div class="spacer"></div>'+
   '<div class="card"><div class="h3">Excel / CSV de productos</div><p class="muted small" style="margin-top:0">Importá una lista de productos o exportá el inventario para abrirlo en Excel. Columnas: <code>codigo, nombre, categoria, proveedor, marca, ubicacion, unidad, stock, minimo, ideal, costo, precio, activo</code>. Solo <b>nombre</b> es obligatorio. Si el código ya existe, se actualiza el producto.</p>'+
   '<div class="row"><button class="btn" data-act="import-csv">'+ic('upload',16)+'Importar CSV</button><button class="btn" data-act="export-csv">'+ic('download',16)+'Exportar inventario (CSV)</button><button class="btn ghost" data-act="template-csv">Descargar plantilla</button></div></div><div class="spacer"></div>'+
+  (DELMODE&&STORES.length>1?'<div class="card"><div class="h3">Eliminar esta ferretería</div><p class="muted small" style="margin-top:0">Borra para siempre “'+esc(storeName())+'” con todo su inventario, ventas y caja.'+(DELMODE==='key'?' Pide la clave maestra.':'')+'</p><div class="row"><button class="btn danger" data-act="store-del" data-id="'+esc(STORE)+'">Eliminar ferretería…</button></div></div><div class="spacer"></div>':'')+
   '<div class="card"><div class="h3">Copia de seguridad</div><p class="muted small" style="margin-top:0">Descargá una copia de los datos (productos, ventas, caja, liquidaciones) y guardala en Google Drive. Es un resguardo extra por si algún día hace falta recuperar algo. Recomendado: una vez por semana.</p>'+
   '<div class="row"><button class="btn" data-act="export-json">'+ic('download',16)+'Descargar copia (.json)</button></div></div><div class="spacer"></div>'+
   '<div class="card small muted">En pantalla: '+S.products.length+' productos · '+phN+' fotos · '+S.sales.length+' ventas recientes · '+S.movements.length+' movimientos de stock recientes · '+S.cash.sessions.length+' turnos de caja recientes. Lo anterior sigue guardado en la nube.</div>';
@@ -1602,7 +1663,7 @@ function rolesLegend(){
 function storeRowsHtml(list){
   return '<table class="tbl"><thead><tr><th>Nombre</th><th>Estado</th><th></th></tr></thead><tbody>'+
   list.map(s=>'<tr><td class="first pname">'+esc(s.name)+'</td><td data-label="Estado">'+(s.id===STORE?'<span class="badge ok">Es la que estás viendo</span>':(hiddenIds().indexOf(s.id)>-1?'<span class="muted small">Oculta para vos</span>':''))+'</td>'+
-  '<td><div class="acts"><button class="btn sm" data-act="store-rename" data-id="'+esc(s.id)+'">Renombrar</button><button class="btn sm danger" data-act="store-del" data-id="'+esc(s.id)+'">Eliminar</button></div></td></tr>').join('')+
+  '<td><div class="acts"><button class="btn sm" data-act="store-rename" data-id="'+esc(s.id)+'">Renombrar</button>'+(DELMODE?'<button class="btn sm danger" data-act="store-del" data-id="'+esc(s.id)+'">Eliminar</button>':'')+'</div></td></tr>').join('')+
   '</tbody></table>';
 }
 function teamHtml(){
@@ -1672,11 +1733,13 @@ function storeRenameModal(id){
 }
 function storeDelModal(id){
   const s=STORES.find(x=>x.id===id);if(!s)return;
+  if(!DELMODE){toast('Solo el administrador puede borrar ferreterías','err');return}
   if(STORES.length<2){toast('No se puede borrar la única ferretería','err');return}
-  openModal('Eliminar ferretería','<div class="banner" style="margin:0 0 10px"><div><b>Se borra todo:</b> productos, ventas, caja, liquidaciones y movimientos de “'+esc(s.name)+'”. No se puede deshacer. Antes conviene descargar la copia de seguridad desde Ajustes.</div></div><label class="f full">Para confirmar, escribí el nombre exacto<input name="confirm" autocomplete="off" placeholder="'+esc(s.name)+'"></label>',async fd=>{
+  openModal('Eliminar ferretería','<div class="banner" style="margin:0 0 10px"><div><b>Se borra todo:</b> productos, ventas, caja, liquidaciones y movimientos de “'+esc(s.name)+'”. No se puede deshacer. Antes conviene descargar la copia de seguridad desde Ajustes.</div></div><label class="f full">Para confirmar, escribí el nombre exacto<input name="confirm" autocomplete="off" placeholder="'+esc(s.name)+'"></label>'+(DELMODE==='key'?'<label class="f full">Clave maestra<input name="mkey" type="password" autocomplete="off" required></label>':''),async fd=>{
     if((fd.confirm||'').trim()!==s.name){toast('El nombre no coincide','err');return false}
-    const r=await attempt(()=>sbClient().rpc('delete_store',{p_id:id}));
+    const r=await attempt(()=>sbClient().rpc('delete_store',{p_id:id,p_key:DELMODE==='key'?(fd.mkey||''):null}));
     if(!r.ok)return false;
+    if(r.data&&r.data.ok===false){toast(r.data.error||'No se pudo eliminar','err');const k=$('#mform [name=mkey]');if(k){k.value='';k.focus()}return false}
     setHidden(hiddenIds().filter(x=>x!==id));
     await reloadStores();
     if(id===STORE){
@@ -1754,6 +1817,8 @@ function openModal(title,body,onSubmit,okLabel){
   const form=$('#mform');let busy=false;
   form.addEventListener('submit',async e=>{
     e.preventDefault();if(busy)return;
+    const badN=[...form.querySelectorAll('[data-num]')].find(x=>x.value.trim()!==''&&isNaN(parseNum(x.value)));
+    if(badN){const l=badN.closest('label');toast('Revisá el número en “'+(l?l.childNodes[0].textContent.trim():'el campo')+'”: escribilo como 1234,56 o 1234.56','err');badN.focus();return}
     const fd={};new FormData(form).forEach((v,k)=>{fd[k]=v});
     const btn=form.querySelector('.mf .btn.primary'),lab=btn.textContent;
     busy=true;btn.disabled=true;btn.textContent='Guardando…';
@@ -1784,15 +1849,18 @@ function productForm(p){
   '<label class="f full">Link de este producto en el proveedor (opcional)<input name="buyUrl" value="'+esc(p.buyUrl||'')+'" placeholder="https://…"></label>'+
   '<label class="f">Ubicación (estante / pasillo)<input name="location" value="'+esc(p.location||'')+'" placeholder="Ej: Estante A2"></label>'+
   '<label class="f">Unidad<select name="unit">'+options(UNITS,p.unit)+'</select></label>'+
-  (e?'':'<label class="f">Stock inicial<input name="stock" type="number" step="any" min="0" value="0"></label>')+
-  '<label class="f">Stock mínimo (avisa al llegar acá)<input name="min" type="number" step="any" min="0" value="'+(p.min||0)+'"></label>'+
-  '<label class="f">Stock ideal (para sugerir pedido)<input name="ideal" type="number" step="any" min="0" value="'+(p.ideal||'')+'" placeholder="Opcional"></label>'+
-  '<label class="f">Costo<input name="cost" type="number" step="any" min="0" value="'+(p.cost||'')+'"></label>'+
-  '<label class="f">Precio de venta<input name="price" type="number" step="any" min="0" value="'+(p.price||'')+'"></label>'+
+  (e?'':'<label class="f">Stock inicial<input name="stock" type="text" inputmode="decimal" autocomplete="off" data-num value="0"></label>')+
+  '<label class="f">Stock mínimo (avisa al llegar acá)<input name="min" type="text" inputmode="decimal" autocomplete="off" data-num value="'+inNum((p.min||0))+'"></label>'+
+  '<label class="f">Stock ideal (para sugerir pedido)<input name="ideal" type="text" inputmode="decimal" autocomplete="off" data-num value="'+inNum((p.ideal||''))+'" placeholder="Opcional"></label>'+
+  '<label class="f">Costo<input name="cost" type="text" inputmode="decimal" autocomplete="off" data-num value="'+inNum((p.cost||''))+'"></label>'+
+  '<label class="f">Precio de venta<input name="price" type="text" inputmode="decimal" autocomplete="off" data-num value="'+inNum((p.price||''))+'"></label>'+
+  '<div class="full sec" style="margin:4px 0 0;padding-top:10px;border-top:1px solid var(--line)"><b>Venta suelta</b> <span class="muted small">(opcional: por ejemplo, una caja de 1000 tornillos que también se vende por tornillo)</span></div>'+
+  '<label class="f">Unidades que trae cada '+esc(p.unit||'unidad')+'<input name="packQty" type="text" inputmode="decimal" autocomplete="off" data-num value="'+(isPack(p)?inNum(p.packQty):'')+'" placeholder="Vacío = no se vende suelto"></label>'+
+  '<label class="f">Precio por unidad suelta<input name="loosePrice" type="text" inputmode="decimal" autocomplete="off" data-num value="'+(isPack(p)&&p.loosePrice!=null?inNum(p.loosePrice):'')+'" placeholder="Vacío = precio ÷ unidades"></label>'+
   '<label class="f full">Notas<textarea name="notes" rows="2">'+esc(p.notes||'')+'</textarea></label>'+
   (p.review?'<label class="f chk full"><input type="checkbox" name="reviewed"> Ya lo revisé: quitar la marca de “para revisar”</label>':'')+
   '<label class="f chk full"><input type="checkbox" name="active"'+(p.active!==false?' checked':'')+'> Producto activo (se vende, controla stock y avisa faltantes)</label>'+
-  (e?'<div class="full small muted">Stock actual: <b>'+fq(p.stock)+' '+esc(p.unit)+'</b>. Para cambiarlo usá “+ Ingreso”, “− Salida” o un ajuste de conteo, así queda el historial.</div>':'')+
+  (e?'<div class="full small muted">Stock actual: <b>'+fstock(p)+'</b>. Para cambiarlo usá “+ Ingreso”, “− Salida” o un ajuste de conteo, así queda el historial.</div>':'')+
   '</div>';
 }
 function wirePhoto(){
@@ -1826,6 +1894,8 @@ function readProduct(fd,p){
   p.location=(fd.location||'').trim();p.unit=fd.unit||'unidad';
   p.min=num(fd.min);p.ideal=num(fd.ideal);
   setPrices(p,num(fd.cost),num(fd.price),p.priceHistory&&p.priceHistory.length?'Edición manual':'Alta');
+  const pk=num(fd.packQty);p.packQty=pk>1?pk:1;
+  p.loosePrice=p.packQty>1&&String(fd.loosePrice||'').trim()!==''?round2(num(fd.loosePrice)):null;
   p.notes=(fd.notes||'').trim();p.active=fd.active==='on';
   if(fd.reviewed==='on')p.review='';
   return p;
@@ -1875,9 +1945,9 @@ async function delProduct(id){
 }
 function moveModal(id,type,qty){
   const p=prod(id);if(!p)return;
-  const body='<div class="card" style="background:#f6f8fa;box-shadow:none;margin-bottom:12px"><div class="pname">'+esc(p.name)+'</div><div class="small muted">Stock actual: <b>'+fq(p.stock)+' '+esc(p.unit)+'</b> · mínimo '+fq(p.min)+'</div></div>'+
+  const body='<div class="card" style="background:#f6f8fa;box-shadow:none;margin-bottom:12px"><div class="pname">'+esc(p.name)+'</div><div class="small muted">Stock actual: <b>'+fstock(p)+'</b> · mínimo '+fq(p.min)+'</div></div>'+
   '<div class="fgrid"><label class="f">Tipo<select name="type" id="mtypeSel"><option value="in"'+(type==='in'?' selected':'')+'>Ingreso (suma)</option><option value="out"'+(type==='out'?' selected':'')+'>Salida (resta)</option><option value="adjust"'+(type==='adjust'?' selected':'')+'>Ajuste por conteo (fija el stock)</option></select></label>'+
-  '<label class="f"><span id="qlbl">Cantidad</span><input name="qty" type="number" step="any" min="0" required value="'+(qty||'')+'"></label>'+
+  '<label class="f"><span id="qlbl">Cantidad</span><input name="qty" type="text" inputmode="decimal" autocomplete="off" data-num required value="'+inNum((qty||''))+'"></label>'+
   '<label class="f full">Motivo<input name="reason" list="reasons" value="'+(type==='in'?'Compra a proveedor':type==='out'?'Uso interno':type==='adjust'?'Conteo de inventario':'')+'"><datalist id="reasons">'+REASONS.map(r=>'<option value="'+esc(r)+'">').join('')+'</datalist></label>'+
   '<label class="f full">Nota (opcional)<input name="note" placeholder="Ej: Remito 0001-2345"></label></div>'+
   '<p class="muted small">Para vender usá “Nueva venta”, así queda en la caja y en el historial de ventas.</p>';
@@ -1895,7 +1965,7 @@ function pricesModal(){
   openModal('Actualizar precios por porcentaje',
     '<div class="fgrid"><label class="f">Aplicar a<select name="scope" id="pscope"><option value="all">Todos los productos</option><option value="cat">Una categoría</option><option value="sup">Un proveedor</option></select></label>'+
     '<label class="f" id="pwhoWrap" style="display:none">¿Cuál?<select name="who" id="pwho"></select></label>'+
-    '<label class="f">Porcentaje (+ aumenta, − baja)<input name="pct" type="number" step="any" required placeholder="Ej: 12"></label>'+
+    '<label class="f">Porcentaje (+ aumenta, − baja)<input name="pct" type="text" inputmode="text" autocomplete="off" data-num required placeholder="Ej: 12"></label>'+
     '<label class="f">Modificar<select name="what"><option value="price">Solo precio de venta</option><option value="both">Costo y precio de venta</option><option value="cost">Solo costo</option></select></label>'+
     '<label class="f">Redondear a<select name="round"><option value="0">Sin redondeo</option><option value="10">Múltiplos de $10</option><option value="50">Múltiplos de $50</option><option value="100">Múltiplos de $100</option></select></label></div>'+
     '<p class="muted small">Queda registrado en el historial de precios de cada producto. Los productos sin precio cargado no se modifican.</p>',
@@ -1912,6 +1982,7 @@ function pricesModal(){
         const pr=(fd.what==='cost')?p.price:(p.price?f(p.price):p.price);
         if(c!==p.cost||pr!==p.price){
           const q=Object.assign({},p,{priceHistory:(p.priceHistory||[]).slice()});
+          if(fd.what!=='cost'&&q.loosePrice!=null&&isPack(q))q.loosePrice=f(q.loosePrice);
           setPrices(q,c||0,pr||0,'Ajuste '+(pct>0?'+':'')+pct+'%');changed.push(q);
         }
       });
@@ -1967,17 +2038,17 @@ async function supDel(id){
 /* ================= Importar / Exportar ================= */
 function csvCell(v,d){v=String(v==null?'':v);return (v.indexOf(d)>-1||v.indexOf('"')>-1||v.indexOf('\n')>-1)?'"'+v.replace(/"/g,'""')+'"':v}
 function csvNum(n){return String(n==null?'':n).replace('.',',')}
-const CSV_HEAD=['codigo','nombre','categoria','proveedor','marca','ubicacion','unidad','stock','minimo','ideal','costo','precio','activo'];
+const CSV_HEAD=['codigo','nombre','categoria','proveedor','marca','ubicacion','unidad','stock','minimo','ideal','costo','precio','activo','unidades_por_caja','precio_unidad'];
 function exportCSV(){
   const d=';',rows=[CSV_HEAD.join(d)];
   S.products.forEach(p=>{
-    rows.push([p.sku,p.name,catName(p.categoryId)==='Sin categoría'?'':catName(p.categoryId),supName(p.supplierId),p.brand,p.location,p.unit,csvNum(p.stock),csvNum(p.min),csvNum(p.ideal||''),csvNum(p.cost||''),csvNum(p.price||''),p.active===false?'no':'si'].map(v=>csvCell(v,d)).join(d));
+    rows.push([p.sku,p.name,catName(p.categoryId)==='Sin categoría'?'':catName(p.categoryId),supName(p.supplierId),p.brand,p.location,p.unit,csvNum(p.stock),csvNum(p.min),csvNum(p.ideal||''),csvNum(p.cost||''),csvNum(p.price||''),p.active===false?'no':'si',(p.packQty>1?csvNum(p.packQty):''),(p.packQty>1&&p.loosePrice!=null?csvNum(p.loosePrice):'')].map(v=>csvCell(v,d)).join(d));
   });
   download('inventario-ferreteria-jr.csv','﻿'+rows.join('\r\n'),'text/csv;charset=utf-8');
 }
 function templateCSV(){
   const d=';';
-  const rows=[CSV_HEAD.join(d),['JR-0001','Codo PPR 20mm 90°','Plomería','Distribuidora Norte','Tigre','Estante B2','unidad','35','20','80','350','700','si'].join(d),['','Esmalte sintético 1L Blanco','Pinturas y solventes','','Colorin','Estante C1','unidad','6','6','12','9000','14500','si'].join(d)];
+  const rows=[CSV_HEAD.join(d),['JR-0001','Codo PPR 20mm 90°','Plomería','Distribuidora Norte','Tigre','Estante B2','unidad','35','20','80','350','700','si'].join(d),['','Esmalte sintético 1L Blanco','Pinturas y solventes','','Colorin','Estante C1','unidad','6','6','12','9000','14500','si'].join(d),['','Tornillo autoperforante 8x1/2 (caja x1000)','Tornillería','','','Estante D1','caja','3','1','5','12000','18500','si','1000','25'].join(d)];
   download('plantilla-inventario.csv','﻿'+rows.join('\r\n'),'text/csv;charset=utf-8');
 }
 function parseCSV(text){
@@ -2001,7 +2072,8 @@ const ALIAS={
   cat:['categoria','rubro','familia'],sup:['proveedor','provedor'],brand:['marca'],loc:['ubicacion','estante','lugar'],
   unit:['unidad','um','unidad de medida'],stock:['stock','cantidad','existencia','stock actual'],
   min:['minimo','stock minimo','min'],ideal:['ideal','stock ideal','objetivo','maximo'],
-  cost:['costo','precio de costo','costo unitario'],price:['precio','precio de venta','pvp','venta'],active:['activo','estado']
+  cost:['costo','precio de costo','costo unitario'],price:['precio','precio de venta','pvp','venta'],active:['activo','estado'],
+  pack:['unidades por caja','unidades x caja','unid por caja','contenido','cantidad por caja','x caja','pack'],loose:['precio unidad','precio por unidad','precio suelto','precio unidad suelta','precio x unidad']
 };
 let BATCH=null;   // altas de categorías/proveedores que se guardan juntas al importar
 function getOrCreateCat(n){
@@ -2023,6 +2095,9 @@ async function importCSV(text){
   const B=BATCH={cats:[],sups:[],news:[],upd:{},adj:[]};
   let created=0,updated=0,skipped=0;
   const g=(r,k)=>ix[k]>-1?String(r[ix[k]]==null?'':r[ix[k]]).trim():'';
+  const NF=detectNumFormat([].concat(...rows.slice(1).map(r=>['stock','min','ideal','cost','price','pack','loose'].map(k=>g(r,k)))));
+  const nn=v=>num(v,NF);
+  const badNums=[];
   rows.slice(1).forEach(r=>{
     const name=g(r,'name');if(!name){skipped++;return}
     const sku=g(r,'sku');
@@ -2037,19 +2112,23 @@ async function importCSV(text){
     if(ix.brand>-1)p.brand=g(r,'brand');
     if(ix.loc>-1)p.location=g(r,'loc');
     if(ix.unit>-1&&g(r,'unit'))p.unit=g(r,'unit').toLowerCase();
-    if(ix.min>-1)p.min=num(g(r,'min'));
-    if(ix.ideal>-1)p.ideal=num(g(r,'ideal'));
-    if(ix.cost>-1||ix.price>-1)setPrices(p,ix.cost>-1?num(g(r,'cost')):(p.cost||0),ix.price>-1?num(g(r,'price')):(p.price||0),isNew?'Alta (importación)':'Importación');
+    if(ix.min>-1)p.min=nn(g(r,'min'));
+    if(ix.ideal>-1)p.ideal=nn(g(r,'ideal'));
+    if(ix.cost>-1||ix.price>-1)['cost','price','stock'].forEach(k=>{const v=g(r,k);if(v!==''&&isNaN(parseNum(v,NF)))badNums.push(name)});
+    if(ix.pack>-1&&g(r,'pack')!==''){const k=nn(g(r,'pack'));p.packQty=k>0?k:1}
+    if(ix.loose>-1)p.loosePrice=g(r,'loose')!==''?round2(nn(g(r,'loose'))):null;
+    setPrices(p,ix.cost>-1?nn(g(r,'cost')):(p.cost||0),ix.price>-1?nn(g(r,'price')):(p.price||0),isNew?'Alta (importación)':'Importación');
     if(ix.active>-1&&g(r,'active')){const a=norm(g(r,'active'));p.active=!(a==='no'||a==='inactivo'||a==='0'||a==='false')}
     if(ix.stock>-1&&g(r,'stock')!==''){
-      const ns=Math.max(0,num(g(r,'stock')));
+      const ns=Math.max(0,nn(g(r,'stock')));
       if(fresh)p.stock=ns;
       else if(ns!==p.stock)B.adj.push({id:p.id,ns});
     }
     isNew?created++:updated++;
   });
   BATCH=null;
-  toast('Importando… un momento');
+  if(badNums.length&&!confirm('Hay '+badNums.length+' fila(s) con números que no se entienden (por ejemplo “'+badNums[0]+'”). Esos valores quedan en 0. ¿Importar igual?')){await safeReload(['categories','suppliers','products']);render();return}
+  toast('Importando… un momento'+(NF==='ar'?' (números con coma decimal)':NF==='us'?' (números con punto decimal)':''));
   const res=await attempt(async()=>{
     await writeRows('categories',B.cats.map(c=>({id:c.id,name:c.name})),'upsert');
     await writeRows('suppliers',B.sups.map(s=>({id:s.id,name:s.name,phone:s.phone,url:s.url,notes:s.notes})),'upsert');
@@ -2158,7 +2237,7 @@ document.addEventListener('click',e=>{
     case 'settle': settleModal(id);break;
     case 'settle-bulk': settleBulk();break;
     case 'sel-all': {const on=t.checked;$$('[data-sel]').forEach(c=>{c.checked=on;ui.sel[c.getAttribute('data-sel')]=on});return}
-    case 'pos-add': posAdd(id);break;
+    case 'pos-add': posAdd(id,t.getAttribute('data-loose')==='1');break;
     case 'pos-rm': cart.items.splice(parseInt(t.getAttribute('data-i'),10),1);renderCart();updateTotals();break;
     case 'pos-pct': {const tt=cartTotals();cart.discount=round2(tt.sub*num(t.getAttribute('data-p'))/100);$('#posDisc').value=cart.discount||'';updateTotals();break}
     case 'pos-addpay': {const tt=cartTotals();const paid=cart.pay.reduce((x,p)=>x+(p.amount||0),0);cart.pay.forEach(p=>p.auto=false);const nm=S.payMethods.find(m=>m.active!==false&&m.id!==cart.pay[0].mid);cart.pay.push({mid:nm?nm.id:defaultMethod(),amount:Math.max(0,round2(tt.total-paid)),auto:false,received:''});renderPay();updatePayStatus();break}
