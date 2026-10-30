@@ -261,6 +261,7 @@ body.locked .app,body.locked .scrim{display:none}
 .who .btn{padding:5px 10px;font-size:12.5px;background:transparent;color:#C8D6E0;border:1px solid rgba(255,255,255,.22)}
 #netbar{position:fixed;top:0;left:0;right:0;z-index:400;background:var(--amber-bg);color:var(--amber);text-align:center;font-weight:700;font-size:13.5px;padding:8px 12px;border-bottom:1px solid #F2D2A4}
 #netbar[hidden]{display:none}
+td.mono,.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12.5px;color:var(--muted)}
 input[data-num]{text-align:right;font-variant-numeric:tabular-nums}
 .pager{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;padding:10px}
 .pgnav{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
@@ -398,7 +399,7 @@ function mCat(r){return {id:r.id,name:r.name}}
 function mSup(r){return {id:r.id,name:r.name,phone:r.phone||'',url:r.url||'',notes:r.notes||''}}
 function mPay(r){return {id:r.id,name:r.name,type:r.type,fee:N(r.fee),days:N(r.days),active:r.active!==false}}
 function mProd(r){return {id:r.id,sku:r.sku,name:r.name,categoryId:r.category_id||'',supplierId:r.supplier_id||'',brand:r.brand||'',unit:r.unit||'unidad',location:r.location||'',stock:N(r.stock),min:N(r.min_stock),ideal:N(r.ideal_stock),cost:N(r.cost),price:N(r.price),buyUrl:r.buy_url||'',notes:r.notes||'',review:r.review||'',active:r.active!==false,photoPath:r.photo_path||null,packQty:N(r.pack_qty)||1,loosePrice:r.loose_price==null?null:N(r.loose_price),priceHistory:Array.isArray(r.price_history)?r.price_history:[],createdAt:r.created_at,updatedAt:r.updated_at}}
-function mMov(r){return {id:r.id,productId:r.product_id,name:r.name,unit:r.unit,type:r.type,qty:N(r.qty),delta:N(r.delta),after:N(r.stock_after),reason:r.reason||'',note:r.note||'',date:r.created_at,by:r.by_email||''}}
+function mMov(r){return {number:r.number==null?null:N(r.number),id:r.id,productId:r.product_id,name:r.name,unit:r.unit,type:r.type,qty:N(r.qty),delta:N(r.delta),after:N(r.stock_after),reason:r.reason||'',note:r.note||'',date:r.created_at,by:r.by_email||''}}
 function mSale(r){return {id:r.id,number:r.number,date:r.date,sessionId:r.session_id,items:r.items||[],subtotal:N(r.subtotal),discount:N(r.discount),total:N(r.total),payments:r.payments||[],customer:r.customer||'',note:r.note||'',voided:!!r.voided,voidedAt:r.voided_at,by:r.by_email||''}}
 function mSet(r){return {id:r.id,saleId:r.sale_id,saleNumber:r.sale_number,methodId:r.method_id||'',methodName:r.method_name,kind:r.kind,gross:N(r.gross),fee:N(r.fee),net:N(r.net),date:r.date,expected:r.expected,status:r.status,settledDate:r.settled_date||'',received:r.received==null?null:N(r.received),collectedVia:r.collected_via||'',customer:r.customer||''}}
 function mSess(r){return {id:r.id,openedAt:r.opened_at,opening:N(r.opening),closedAt:r.closed_at,counted:r.counted==null?null:N(r.counted),expected:r.expected==null?null:N(r.expected),diff:r.diff==null?null:N(r.diff),note:r.note||'',summary:r.summary||null,moves:Array.isArray(r.moves)?r.moves:[],by:r.by_email||''}}
@@ -1094,21 +1095,32 @@ async function openHistory(id){
   }catch(e){openSheet('Historial de '+p.name,'<div class="card empty"><p>'+esc(errMsg(e))+'</p></div>');return}
   const ev=rows.map(m=>{
     const kind=/^Venta/.test(m.reason)?'Venta':/^Anulaci/.test(m.reason)?'Anulación':/^Stock inicial/.test(m.reason)?'Alta':m.type==='in'?'Ingreso':m.type==='out'?'Salida':'Ajuste de conteo';
-    return {date:m.date,kind,txt:(m.reason&&m.reason!==kind?esc(m.reason):'')+(m.note?(m.reason?' · ':'')+esc(m.note):''),
-      qty:'<span class="'+(m.delta>0?'d-in':m.delta<0?'d-out':'d-adj')+'">'+(m.delta>0?'+':m.delta<0?'−':'')+fstock(p,Math.abs(m.delta))+'</span><div class="small muted">quedó '+fstock(p,m.after)+'</div>',by:m.by};
+    return {date:m.date,id:movId(m),kind,txt:(m.reason&&m.reason!==kind?esc(m.reason):'')+(m.note?(m.reason?' · ':'')+esc(m.note):''),
+      qty:movQtyHtml(m,p)+'<div class="small muted">quedó '+fstock(p,m.after)+'</div>',by:m.by};
   });
   (p.priceHistory||[]).forEach(x=>ev.push({date:x.date,kind:'Precio',txt:'Costo '+fm(x.cost)+' · venta '+fm(x.price)+(x.reason?' · '+esc(x.reason):''),qty:'',by:x.by||''}));
   ev.sort((a,b)=>String(b.date).localeCompare(String(a.date)));
   const h='<div class="small muted" style="margin-bottom:8px">Ventas, ingresos, salidas, ajustes, anulaciones y cambios de precio de este producto, con fecha y quién lo hizo. Stock actual: <b>'+fstock(p)+'</b></div>'+
-    (ev.length?'<div class="list hist">'+ev.map(e=>'<div class="it"><div><div><span class="tag">'+e.kind+'</span> '+e.txt+'</div><div class="small muted">'+fdate(e.date)+(e.by?' · '+esc(String(e.by).split('@')[0]):'')+'</div></div><div style="text-align:right">'+e.qty+'</div></div>').join('')+'</div>':'<div class="muted">Sin historial todavía.</div>')+
+    (ev.length?'<div class="list hist">'+ev.map(e=>'<div class="it"><div><div>'+(e.id?'<span class="mono small">'+e.id+'</span> ':'')+'<span class="tag">'+e.kind+'</span> '+e.txt+'</div><div class="small muted">'+fdate(e.date)+(e.by?' · '+esc(String(e.by).split('@')[0]):'')+'</div></div><div style="text-align:right">'+e.qty+'</div></div>').join('')+'</div>':'<div class="muted">Sin historial todavía.</div>')+
     (rows.length>=500?'<p class="small muted">Se muestran los últimos 500 movimientos.</p>':'');
   openSheet('Historial de '+p.name,h);
+}
+// Número de movimiento: #000123
+function movId(m){return m&&m.number!=null?'#'+String(m.number).padStart(6,'0'):''}
+// En una salida, lo que realmente se vendió/sacó (aunque el sistema tuviera menos)
+function movQtyHtml(m,p){
+  const cls=m.type==='in'?'d-in':m.type==='out'?'d-out':'d-adj';
+  const f=v=>p?fstock(p,v):fq(v)+' <span class="muted small">'+esc(m.unit||'')+'</span>';
+  if(m.type==='adjust')return '<span class="'+cls+'">'+(m.delta>0?'+':m.delta<0?'−':'')+f(Math.abs(m.delta))+'</span>';
+  const miss=m.type==='out'?Math.round((m.qty+m.delta)*10000)/10000:0;   // delta es lo que bajó el stock
+  return '<span class="'+cls+'">'+(m.type==='in'?'+':'−')+f(m.qty)+'</span>'+(miss>0?'<div class="small neg">faltaban '+fq(miss)+' en el sistema</div>':'');
 }
 function movLine(m){
   const cls=m.type==='in'?'d-in':m.type==='out'?'d-out':'d-adj';
   const lbl=m.type==='in'?'Ingreso':m.type==='out'?'Salida':'Ajuste';
-  return '<div class="it"><div><div class="pname">'+esc(m.name)+'</div><div class="small muted">'+lbl+(m.reason?' · '+esc(m.reason):'')+' · '+fdate(m.date)+'</div></div>'+
-    '<div style="text-align:right"><span class="'+cls+'">'+(m.delta>0?'+':'')+fq(m.delta)+'</span><div class="small muted">quedó '+fq(m.after)+'</div></div></div>';
+  const p=prod(m.productId);
+  return '<div class="it"><div><div class="pname">'+esc(m.name)+'</div><div class="small muted">'+(movId(m)?'<span class="mono">'+movId(m)+'</span> · ':'')+lbl+(m.reason?' · '+esc(m.reason):'')+' · '+fdate(m.date)+'</div></div>'+
+    '<div style="text-align:right">'+movQtyHtml(m,p)+'<div class="small muted">quedó '+(p?fstock(p,m.after):fq(m.after))+'</div></div></div>';
 }
 
 /* ---------- Ventas (historial) ---------- */
@@ -1583,22 +1595,22 @@ function viewFaltantes(){
 
 /* ---------- Movimientos ---------- */
 function viewMovimientos(){
-  return '<div class="title">Movimientos de stock</div><div class="filters noprint" style="grid-template-columns:2fr 1fr"><div class="search">'+ic('search',18)+'<input id="mq" placeholder="Buscar producto o motivo…" value="'+esc(ui.mq)+'"></div><select id="mtype"><option value="">Todos los tipos</option><option value="in">Ingresos</option><option value="out">Salidas</option><option value="adjust">Ajustes</option></select></div><div class="card" style="padding:6px 10px" id="movBox"></div>';
+  return '<div class="title">Movimientos de stock</div><div class="filters noprint" style="grid-template-columns:2fr 1fr"><div class="search">'+ic('search',18)+'<input id="mq" placeholder="Buscar producto, motivo o ID (#000123)…" value="'+esc(ui.mq)+'"></div><select id="mtype"><option value="">Todos los tipos</option><option value="in">Ingresos</option><option value="out">Salidas</option><option value="adjust">Ajustes</option></select></div><div class="card" style="padding:6px 10px" id="movBox"></div>';
 }
 function renderMovRows(){
   const box=$('#movBox');if(!box)return;
   const t=($('#mtype')||{}).value||'',q=norm(ui.mq);
   const list=S.movements.filter(m=>{
     if(t&&m.type!==t)return false;
-    return !q||norm(m.name+' '+m.reason+' '+m.note).indexOf(q)>-1;
+    return !q||norm(movId(m)+' '+m.name+' '+m.reason+' '+m.note).indexOf(q)>-1;
   }).slice(0,300);
   if(!list.length){box.innerHTML='<div class="empty">Sin movimientos para mostrar.</div>';return}
-  box.innerHTML='<table class="tbl"><thead><tr><th>Fecha</th><th>Producto</th><th>Tipo</th><th class="num">Cantidad</th><th class="num">Stock resultante</th><th>Motivo</th></tr></thead><tbody>'+
+  box.innerHTML='<table class="tbl"><thead><tr><th>ID</th><th>Fecha</th><th>Producto</th><th>Tipo</th><th class="num">Cantidad</th><th class="num">Stock resultante</th><th>Motivo</th></tr></thead><tbody>'+
    list.map(m=>{
      const cls=m.type==='in'?'d-in':m.type==='out'?'d-out':'d-adj';
      const lbl=m.type==='in'?'Ingreso':m.type==='out'?'Salida':'Ajuste';
-     return '<tr><td data-label="Fecha">'+fdate(m.date)+'</td><td class="first pname">'+esc(m.name)+'</td><td data-label="Tipo">'+lbl+'</td>'+
-     '<td data-label="Cantidad" class="num"><span class="'+cls+'">'+(m.delta>0?'+':'')+fq(m.delta)+'</span> <span class="muted small">'+esc(m.unit||'')+'</span></td>'+
+     return '<tr><td data-label="ID" class="mono">'+(movId(m)||'—')+'</td><td data-label="Fecha">'+fdate(m.date)+'</td><td class="first pname">'+esc(m.name)+'</td><td data-label="Tipo">'+lbl+'</td>'+
+     '<td data-label="Cantidad" class="num">'+movQtyHtml(m,prod(m.productId))+'</td>'+
      '<td data-label="Stock resultante" class="num">'+fq(m.after)+'</td><td data-label="Motivo">'+esc(m.reason)+(m.note?' <span class="muted small">· '+esc(m.note)+'</span>':'')+(m.by?' <span class="muted small">· '+esc(m.by.split('@')[0])+'</span>':'')+'</td></tr>';
    }).join('')+'</tbody></table>';
 }
