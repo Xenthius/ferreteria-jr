@@ -274,7 +274,8 @@ input[data-num]{text-align:right;font-variant-numeric:tabular-nums}
 .combocard{display:block;text-align:left;border:1px solid var(--line);border-radius:var(--r-md,12px);background:var(--surface,#fff);padding:12px;font:inherit;color:inherit;cursor:pointer}
 .combocard:hover{border-color:var(--accent);background:var(--accent-soft)}
 .cbitems{display:grid;gap:6px;margin-top:6px}
-.cbitem{display:grid;grid-template-columns:minmax(0,1fr) 90px auto;gap:8px;align-items:center}
+.cbitem{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:8px;align-items:center}
+.cbq{display:flex;align-items:center;gap:4px}.cbq input{width:70px}.cbq .cbu{min-width:42px}
 /* ---- Lo que el rol no permite, no se muestra ---- */
 body.no-catalog [data-act=new-product],body.no-catalog [data-act=edit-product],body.no-catalog [data-act=del-product],body.no-catalog [data-act=prices],body.no-catalog [data-act=import-csv],body.no-catalog [data-act=seed],body.no-catalog [data-act=cat-add],body.no-catalog [data-act=cat-edit],body.no-catalog [data-act=cat-del],body.no-catalog [data-act=sup-add],body.no-catalog [data-act=sup-edit],body.no-catalog [data-act=sup-del],body.no-catalog [data-act=pm-add],body.no-catalog [data-act=pm-edit],body.no-catalog [data-act=pm-del],body.no-catalog [data-act=combo-new],body.no-catalog [data-act=combo-edit],body.no-catalog [data-act=combo-del],
 body.no-stock [data-act=move],
@@ -749,6 +750,30 @@ function parseNum(v,mode){
   return neg?-n:n;
 }
 function num(v,mode){const n=parseNum(v,mode);return isNaN(n)?0:n}
+// Unidades que se venden fraccionadas (litros, kilos, metros)
+function liqUnit(u){return /^(l|lt|lts|litro|litros|lit)\.?$/i.test(String(u||'').trim())}
+function kgUnit(u){return /^(kg|kgs|kilo|kilos)\.?$/i.test(String(u||'').trim())}
+function fracUnit(u){return liqUnit(u)||kgUnit(u)||/^(m|mt|mts|metro|metros)\.?$/i.test(String(u||'').trim())}
+// Cantidades: además de 0,5 acepta 1/2, ½, 1 1/2, 1½, "0,5 L", "1/2 litro", "500 ml" / "500 cc" (en litros) y "500 g" (en kilos)
+function parseQty(v,unit){
+  let s=String(v==null?'':v).trim().toLowerCase().replace(/\u00a0/g,' ');
+  if(s==='')return NaN;
+  const VF={'½':.5,'¼':.25,'¾':.75,'⅓':1/3,'⅔':2/3,'⅛':.125};
+  let div=1;
+  const sm=s.match(/^(.*?)\s*(ml|cc|cm3|g|gr|grs|gramos)\.?$/);
+  if(sm&&((/^(ml|cc|cm3)$/.test(sm[2])&&liqUnit(unit))||(/^(g|gr|grs|gramos)$/.test(sm[2])&&kgUnit(unit)))){s=sm[1];div=1000}
+  else s=s.replace(/\s*(l|lt|lts|litro|litros|kg|kgs|kilo|kilos|m|mt|mts|metro|metros|u|un|unid|unidad|unidades|x)\.?$/,'');
+  s=s.trim();if(s==='')return NaN;
+  let m=s.match(/^(\d+)?\s*([½¼¾⅓⅔⅛])$/);
+  if(m)return ((m[1]?parseInt(m[1],10):0)+VF[m[2]])/div;
+  m=s.match(/^(?:(\d+)\s+)?(\d+)\s*\/\s*(\d+)$/);
+  if(m){const d=parseInt(m[3],10);if(!d)return NaN;return ((m[1]?parseInt(m[1],10):0)+parseInt(m[2],10)/d)/div}
+  const n=parseNum(s);return isNaN(n)?NaN:n/div;
+}
+function qtyNum(v,unit){const n=parseQty(v,unit);return isNaN(n)?0:Math.round(n*10000)/10000}
+// 0,5 → ½ · 1,5 → 1½ (para mostrar cantidades de combos)
+function fqFrac(n){n=Number(n)||0;const w=Math.floor(n+1e-9),f=Math.round((n-w)*1000)/1000;const F={0.5:'½',0.25:'¼',0.75:'¾'};return F[f]?(w?w:'')+F[f]:fq(n)}
+function unitShort(u){return liqUnit(u)?'L':kgUnit(u)?'kg':''}
 // Para mostrar un número dentro de un campo: coma decimal, sin separador de miles (así se lee igual al volver a guardarlo)
 function inNum(v){if(v===''||v==null)return '';const n=Number(v);if(isNaN(n))return '';return String(Math.round(n*10000)/10000).replace('.',',')}
 // Detecta el formato numérico de todo un archivo (para no mezclar 1.500 = mil quinientos con 1.5 = uno y medio)
@@ -777,7 +802,7 @@ function comboMissing(cb){return cb.items.filter(x=>!prod(x.productId))}
 function comboSum(cb){return round2(cb.items.reduce((a,x)=>{const p=prod(x.productId);return a+(p?(p.price||0)*x.qty:0)},0))}
 function comboCost(cb){return cb.items.reduce((a,x)=>{const p=prod(x.productId);return a+(p?(p.cost||0)*x.qty:0)},0)}
 function comboAvail(cb){if(comboMissing(cb).length)return 0;return Math.max(0,Math.floor(Math.min(...cb.items.map(x=>prod(x.productId).stock/x.qty))+1e-7))}
-function comboDetail(cb,sep){return cb.items.map(x=>{const p=prod(x.productId);return fq(x.qty)+' × '+(p?esc(p.name):'<span class="neg">producto borrado</span>')}).join(sep||' · ')}
+function comboDetail(cb,sep){return cb.items.map(x=>{const p=prod(x.productId);const us=p?unitShort(p.unit):'';return (us?fqFrac(x.qty)+' '+us+' de ':fq(x.qty)+' × ')+(p?esc(p.name):'<span class="neg">producto borrado</span>')}).join(sep||' · ')}
 function pmObj(id){return S.payMethods.find(m=>m.id===id)}
 function status(p){
   if(p.active===false) return 'off';
@@ -1189,8 +1214,9 @@ function comboAddItem(id){
 function renderComboItems(){
   const box=$('#combItems');if(!box||!CF)return;
   box.innerHTML=CF.items.length?CF.items.map((x,i)=>{const p=prod(x.productId);
-    return '<div class="cbitem"><div class="pname" style="min-width:0">'+(p?esc(p.name)+' <span class="small muted">('+esc(p.unit)+')</span>':'<span class="neg">Producto borrado</span>')+'</div><input type="text" inputmode="decimal" autocomplete="off" data-num data-cq="'+i+'" value="'+inNum(x.qty)+'" aria-label="Cantidad"><button type="button" class="btn sm icon danger" data-act="combo-rm-item" data-i="'+i+'" aria-label="Quitar">'+ic('x',15)+'</button></div>'}).join('')
+    return '<div class="cbitem"><div class="pname" style="min-width:0">'+(p?esc(p.name)+' <span class="small muted">('+esc(p.unit)+')</span>':'<span class="neg">Producto borrado</span>')+'</div><div class="cbq"><button type="button" class="btn sm icon" data-act="combo-step" data-i="'+i+'" data-d="-1" aria-label="Menos">−</button><input type="text" inputmode="decimal" autocomplete="off" data-num data-qty data-cq="'+i+'" value="'+inNum(x.qty)+'" aria-label="Cantidad"><button type="button" class="btn sm icon" data-act="combo-step" data-i="'+i+'" data-d="1" aria-label="Más">+</button><span class="small muted cbu">'+(p?esc(p.unit):'')+'</span></div><button type="button" class="btn sm icon danger" data-act="combo-rm-item" data-i="'+i+'" aria-label="Quitar">'+ic('x',15)+'</button></div>'}).join('')
     :'<div class="small muted">Todavía no agregaste productos.</div>';
+  if(CF.items.some(x=>{const p=prod(x.productId);return p&&fracUnit(p.unit)}))box.innerHTML+='<div class="small muted" style="margin-top:4px">Para medio litro escribí <b>0,5</b> o <b>1/2</b> (también sirve “500 ml”). Los botones − y + suman o restan medio litro.</div>';
   updateComboSum();
 }
 function updateComboSum(){
@@ -1290,7 +1316,7 @@ function renderCart(){
   cart.items.map((it,i)=>{
     if(it.combo){const cb=comboObj(it.combo)||{name:'(combo borrado)',items:[]};const low=cb.items.some(x=>{const q=prod(x.productId);return !q||cartNeed(q.id)>q.stock+1e-9});
       return '<tr><td class="first"><div class="pcell"><div class="thumb">'+ic('gift',20)+'</div><div><div class="pname">Combo: '+esc(cb.name)+'</div><div class="small '+(low?'neg':'muted')+'">'+comboDetail(cb)+(low?' · ¡no alcanza el stock!':'')+'</div></div></div></td>'+
-      '<td data-label="Cant."><input class="cartq" data-pos="qty" data-i="'+i+'" type="text" inputmode="decimal" autocomplete="off" data-num value="'+inNum(it.qty)+'"></td>'+
+      '<td data-label="Cant."><input class="cartq" data-pos="qty" data-i="'+i+'" type="text" inputmode="decimal" autocomplete="off" data-num data-qty value="'+inNum(it.qty)+'"></td>'+
       '<td data-label="Precio"><input class="cartp" data-pos="price" data-i="'+i+'" type="text" inputmode="decimal" autocomplete="off" data-num value="'+inNum(it.price)+'"></td>'+
       '<td data-label="Subtotal" class="num"><b id="posLine'+i+'">'+fm(it.qty*it.price)+'</b></td>'+
       '<td><button type="button" class="btn sm icon danger" data-act="pos-rm" data-i="'+i+'" aria-label="Quitar combo">'+ic('x',15)+'</button></td></tr>';}
@@ -1298,7 +1324,7 @@ function renderCart(){
     return '<tr><td class="first"><div class="pcell">'+thumb(p,36)+'<div><div class="pname">'+esc(p.name)+'</div><div class="small '+(low?'neg':'muted')+'">'+stockHint(p,it,low)+'</div>'+
     (isPack(p)?'<select class="cartmode" data-pos="mode" data-i="'+i+'" aria-label="Vender por"><option value="pack"'+(it.loose?'':' selected')+'>Por '+esc(p.unit)+' ('+fq(p.packQty)+' u.)</option><option value="u"'+(it.loose?' selected':'')+'>Suelto (por unidad)</option></select>':'')+
     '</div></div></td>'+
-    '<td data-label="Cant."><input class="cartq" data-pos="qty" data-i="'+i+'" type="text" inputmode="decimal" autocomplete="off" data-num value="'+inNum(it.qty)+'"></td>'+
+    '<td data-label="Cant."><input class="cartq" data-pos="qty" data-i="'+i+'" type="text" inputmode="decimal" autocomplete="off" data-num data-qty value="'+inNum(it.qty)+'"></td>'+
     '<td data-label="Precio"><input class="cartp" data-pos="price" data-i="'+i+'" type="text" inputmode="decimal" autocomplete="off" data-num value="'+inNum(it.price)+'"></td>'+
     '<td data-label="Subtotal" class="num"><b id="posLine'+i+'">'+fm(it.qty*it.price)+'</b></td>'+
     '<td><button type="button" class="btn sm icon danger" data-act="pos-rm" data-i="'+i+'" aria-label="Quitar producto">'+ic('x',15)+'</button></td></tr>';
@@ -1365,7 +1391,7 @@ function posInput(t){
     const it=cart.items[i],p=prod(it.pid);it.loose=t.value==='u'&&isPack(p);it.price=it.loose?unitPrice(p):(p.price||0);
     renderCart();updateTotals();return;
   }
-  if(k==='qty'){cart.items[i].qty=num(t.value)}
+  if(k==='qty'){const it=cart.items[i],p=it.pid&&prod(it.pid);it.qty=qtyNum(t.value,p&&!it.loose?p.unit:'')}
   else if(k==='price'){cart.items[i].price=num(t.value)}
   else if(k==='discount'){cart.discount=num(t.value)}
   else if(k==='customer'){cart.customer=t.value}
@@ -1973,7 +1999,7 @@ function openModal(title,body,onSubmit,okLabel){
   const form=$('#mform');let busy=false;
   form.addEventListener('submit',async e=>{
     e.preventDefault();if(busy)return;
-    const badN=[...form.querySelectorAll('[data-num]')].find(x=>x.value.trim()!==''&&isNaN(parseNum(x.value)));
+    const badN=[...form.querySelectorAll('[data-num]')].find(x=>x.value.trim()!==''&&isNaN(x.hasAttribute('data-qty')?parseQty(x.value,'l'):parseNum(x.value)));
     if(badN){const l=badN.closest('label');toast('Revisá el número en “'+(l?l.childNodes[0].textContent.trim():'el campo')+'”: escribilo como 1234,56 o 1234.56','err');badN.focus();return}
     const fd={};new FormData(form).forEach((v,k)=>{fd[k]=v});
     const btn=form.querySelector('.mf .btn.primary'),lab=btn.textContent;
@@ -2364,6 +2390,7 @@ document.addEventListener('click',e=>{
     case 'combo-edit': comboModal(comboObj(id));break;
     case 'combo-del': comboDel(id);break;
     case 'combo-add-item': comboAddItem(id);break;
+    case 'combo-step':{const it=CF&&CF.items[parseInt(t.getAttribute('data-i'),10)];if(it){const p=prod(it.productId),st=p&&fracUnit(p.unit)?0.5:1;it.qty=Math.max(st,Math.round((it.qty+st*parseInt(t.getAttribute('data-d'),10))*10000)/10000);renderComboItems()}break}
     case 'combo-rm-item': CF.items.splice(parseInt(t.getAttribute('data-i'),10),1);renderComboItems();break;
     case 'pg': ui.page=parseInt(t.getAttribute('data-p'),10)||1;renderInvRows();{const b=$('#invBox');if(b&&b.scrollIntoView)b.scrollIntoView({block:'start'})}break;
     case 'hist': openHistory(id);break;
@@ -2437,7 +2464,7 @@ document.addEventListener('input',e=>{
   else if(t.id==='vq'){ui.vq=t.value;renderSalesRows()}
   else if(t.id==='posq'){renderRes()}
   else if(t.id==='combq'){renderComboRes()}
-  else if(t.getAttribute&&t.getAttribute('data-cq')!=null){const it=CF&&CF.items[parseInt(t.getAttribute('data-cq'),10)];if(it){it.qty=num(t.value);updateComboSum()}}
+  else if(t.getAttribute&&t.getAttribute('data-cq')!=null){const it=CF&&CF.items[parseInt(t.getAttribute('data-cq'),10)];if(it){it.qty=qtyNum(t.value,(prod(it.productId)||{}).unit);updateComboSum()}}
   else if(t.getAttribute&&t.getAttribute('data-pos')&&t.getAttribute('data-pos')!=='paymethod'){posInput(t)}
 });
 document.addEventListener('change',e=>{
