@@ -274,6 +274,7 @@ input[data-num]{text-align:right;font-variant-numeric:tabular-nums}
 .combocard{display:block;text-align:left;border:1px solid var(--line);border-radius:var(--r-md,12px);background:var(--surface,#fff);padding:12px;font:inherit;color:inherit;cursor:pointer}
 .combocard:hover{border-color:var(--accent);background:var(--accent-soft)}
 .cbitems{display:grid;gap:6px;margin-top:6px}
+.pfwarn{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:8px 10px;margin:4px 0 8px;border-radius:8px;background:var(--amber-bg);color:var(--amber);font-size:13px}.pfwarn span{flex:1;min-width:0}.pfbad{color:var(--red);cursor:help}.pfwhy{color:var(--red);max-width:260px;margin-left:auto;white-space:normal}
 .cbitem{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:8px;align-items:center}
 .cbq{display:flex;align-items:center;gap:4px}.cbq input{width:70px}.cbq .cbu{min-width:42px}
 /* ---- Lo que el rol no permite, no se muestra ---- */
@@ -1608,19 +1609,39 @@ function viewInventario(){
     '<div class="search q">'+ic('search',18)+'<input id="fq" placeholder="Buscar por nombre, código, marca o ubicación…" value="'+esc(ui.q)+'"></div>'+
     '<select id="fcat">'+options(S.categories,ui.cat,'Todas las categorías')+'</select>'+
     '<select id="fsup">'+options(S.suppliers,ui.sup,'Todos los proveedores')+'</select>'+
-    '<select id="fst"><option value="">Todos los estados</option><option value="need"'+(ui.st==='need'?' selected':'')+'>Para reponer</option><option value="low"'+(ui.st==='low'?' selected':'')+'>Stock bajo</option><option value="out"'+(ui.st==='out'?' selected':'')+'>Sin stock</option><option value="ok"'+(ui.st==='ok'?' selected':'')+'>OK</option><option value="review"'+(ui.st==='review'?' selected':'')+'>Para revisar</option></select>'+
-    '<select id="fsort"><option value="name">Orden: nombre</option><option value="stock"'+(ui.sort==='stock'?' selected':'')+'>Orden: menos stock</option><option value="cat"'+(ui.sort==='cat'?' selected':'')+'>Orden: categoría</option><option value="loc"'+(ui.sort==='loc'?' selected':'')+'>Orden: ubicación</option></select>'+
+    '<select id="fst"><option value="">Todos los estados</option><option value="need"'+(ui.st==='need'?' selected':'')+'>Para reponer</option><option value="low"'+(ui.st==='low'?' selected':'')+'>Stock bajo</option><option value="out"'+(ui.st==='out'?' selected':'')+'>Sin stock</option><option value="ok"'+(ui.st==='ok'?' selected':'')+'>OK</option><option value="review"'+(ui.st==='review'?' selected':'')+'>Para revisar</option><option value="price"'+(ui.st==='price'?' selected':'')+'>Precios raros ('+priceFlags().n+')</option></select>'+
+    '<select id="fsort"><option value="name">Orden: nombre</option><option value="stock"'+(ui.sort==='stock'?' selected':'')+'>Orden: menos stock</option><option value="cat"'+(ui.sort==='cat'?' selected':'')+'>Orden: categoría</option><option value="loc"'+(ui.sort==='loc'?' selected':'')+'>Orden: ubicación</option><option value="pdesc"'+(ui.sort==='pdesc'?' selected':'')+'>Orden: precio mayor a menor</option><option value="pasc"'+(ui.sort==='pasc'?' selected':'')+'>Orden: precio menor a mayor</option></select>'+
   '</div><div class="card" style="padding:6px 10px" id="invBox"></div>';
 }
+// Precios que parecen errores de carga: comparados con el costo y con el resto de su categoría
+function median(a){if(!a.length)return 0;a=a.slice().sort((x,y)=>x-y);const m=a.length>>1;return a.length%2?a[m]:(a[m-1]+a[m])/2}
+let _pf=null;
+function priceFlags(){
+  if(_pf&&_pf.src===S.products&&_pf.len===S.products.length&&_pf.sig===S.products.reduce((t,p)=>t+(Number(p.price)||0)+(Number(p.cost)||0),0))return _pf;
+  const byCat={};S.products.forEach(p=>{const v=Number(p.price)||0;if(v>0)(byCat[p.categoryId||'']=byCat[p.categoryId||'']||[]).push(v)});
+  const med={};for(const k in byCat)if(byCat[k].length>=5)med[k]=median(byCat[k]);
+  const map={};let n=0;
+  S.products.forEach(p=>{
+    const v=Number(p.price)||0,c=Number(p.cost)||0,m=med[p.categoryId||''];let r='';
+    if(v<=0)r='No tiene precio cargado';
+    else if(c>0&&v<c)r='El precio ('+fm(v)+') es menor que el costo ('+fm(c)+')';
+    else if(c>0&&v>=c*8)r='El precio ('+fm(v)+') es '+Math.round(v/c)+' veces el costo ('+fm(c)+')';
+    else if(m&&v>=m*40)r='Sale '+fm(v)+' y en su categoría la mayoría ronda '+fm(m)+'. ¿Le sobran ceros?';
+    else if(m&&v<=m/30)r='Sale '+fm(v)+' y en su categoría la mayoría ronda '+fm(m)+'. ¿Le faltan ceros?';
+    if(r){map[p.id]=r;n++}
+  });
+  _pf={src:S.products,len:S.products.length,sig:S.products.reduce((t,p)=>t+(Number(p.price)||0)+(Number(p.cost)||0),0),map,n};return _pf;
+}
 function filteredProducts(){
-  const q=norm(ui.q);
+  const q=norm(ui.q);const PF=priceFlags().map;
   const r=S.products.filter(p=>{
     if(ui.cat&&p.categoryId!==ui.cat) return false;
     if(ui.sup&&p.supplierId!==ui.sup) return false;
     const s=status(p);
     if(ui.st==='need'&&!(s==='low'||s==='out')) return false;
     if(ui.st==='review'&&!p.review) return false;
-    if(ui.st&&ui.st!=='need'&&ui.st!=='review'&&s!==ui.st) return false;
+    if(ui.st==='price'&&!PF[p.id]) return false;
+    if(ui.st&&ui.st!=='need'&&ui.st!=='review'&&ui.st!=='price'&&s!==ui.st) return false;
     if(q){
       const hay=norm([p.name,p.sku,p.brand,p.location,catName(p.categoryId),supName(p.supplierId)].join(' '));
       return q.split(' ').every(w=>hay.indexOf(w)>-1);
@@ -1629,6 +1650,8 @@ function filteredProducts(){
   });
   r.sort((a,b)=>{
     if(ui.sort==='stock') return a.stock-b.stock;
+    if(ui.sort==='pdesc') return (Number(b.price)||0)-(Number(a.price)||0)||a.name.localeCompare(b.name);
+    if(ui.sort==='pasc') return (Number(a.price)||0)-(Number(b.price)||0)||a.name.localeCompare(b.name);
     if(ui.sort==='cat') return catName(a.categoryId).localeCompare(catName(b.categoryId))||a.name.localeCompare(b.name);
     if(ui.sort==='loc') return (a.location||'zzz').localeCompare(b.location||'zzz')||a.name.localeCompare(b.name);
     return a.name.localeCompare(b.name,'es');
@@ -1641,17 +1664,19 @@ function renderInvRows(){
   if(!list.length){
     box.innerHTML='<div class="empty"><h3>No hay productos para mostrar</h3><div>'+(S.products.length?'Probá cambiando los filtros.':'Cargá el primero con “+ Nuevo producto”.')+'</div></div>';return;
   }
+  const PF=priceFlags();
+  const warn=PF.n&&ui.st!=='price'?'<div class="pfwarn noprint">'+ic('alert',16)+'<span>Hay <b>'+PF.n+'</b> producto'+(PF.n>1?'s':'')+' con precios que parecen mal cargados (sin precio, menor que el costo o muy distinto al resto de su categoría).</span><button class="btn sm" data-act="see-price-flags">Revisarlos</button></div>':'';
   const total=list.length,ps=ui.pageSize||0,pages=ps?Math.max(1,Math.ceil(total/ps)):1;
   if(ui.page>pages)ui.page=pages;if(ui.page<1)ui.page=1;
   const from=ps?(ui.page-1)*ps:0,shown=ps?list.slice(from,from+ps):list;
-  box.innerHTML='<table class="tbl"><thead><tr><th>Producto</th><th>Categoría</th><th>Ubicación</th><th class="num">Stock</th><th>Estado</th><th class="num">Precio</th><th></th></tr></thead><tbody>'+
+  box.innerHTML=warn+'<table class="tbl"><thead><tr><th>Producto</th><th>Categoría</th><th>Ubicación</th><th class="num">Stock</th><th>Estado</th><th class="num">Precio</th><th></th></tr></thead><tbody>'+
   shown.map(p=>
     '<tr><td class="first"><div class="pcell">'+thumb(p)+'<div><div class="pname linkish" data-act="ficha" data-id="'+p.id+'">'+esc(p.name)+'</div><div class="sku">'+esc(p.sku)+(p.brand?' · '+esc(p.brand):'')+(supName(p.supplierId)?' · '+esc(supName(p.supplierId)):'')+(p.review?' <span class="badge low" title="'+esc(p.review)+'">Revisar</span>':'')+'</div></div></div></td>'+
       '<td data-label="Categoría"><span class="tag">'+esc(catName(p.categoryId))+'</span></td>'+
       '<td data-label="Ubicación">'+esc(p.location||'—')+'</td>'+
       '<td data-label="Stock" class="num"><span class="stockn">'+fstock(p)+'</span><div class="small muted">mín. '+fq(p.min)+'</div></td>'+
       '<td data-label="Estado">'+badge(p)+'</td>'+
-      '<td data-label="Precio" class="num">'+(p.price?fm(p.price):'—')+(isPack(p)?'<div class="small muted">'+fm(unitPrice(p))+' c/u</div>':'')+'</td>'+
+      '<td data-label="Precio" class="num">'+(PF.map[p.id]?'<span class="pfbad" title="'+esc(PF.map[p.id])+'">'+ic('alert',13)+' </span>':'')+(p.price?fm(p.price):'—')+(PF.map[p.id]&&ui.st==='price'?'<div class="small pfwhy">'+esc(PF.map[p.id])+'</div>':'')+(isPack(p)?'<div class="small muted">'+fm(unitPrice(p))+' c/u</div>':'')+'</td>'+
       '<td><div class="acts"><button class="btn sm" data-act="move" data-id="'+p.id+'" data-type="out">− Salida</button>'+
       '<button class="btn sm" data-act="move" data-id="'+p.id+'" data-type="in">+ Ingreso</button>'+
       '<button class="btn sm icon" data-act="edit-product" data-id="'+p.id+'" title="Editar" aria-label="Editar">'+ic('edit',15)+'</button></div></td></tr>'
@@ -2447,6 +2472,7 @@ document.addEventListener('click',e=>{
     case 'import-csv': $('#fileCsv').click();break;
     case 'template-csv': templateCSV();break;
     case 'seed': seedFromUI();break;
+    case 'see-price-flags': ui.st='price';ui.sort='pdesc';ui.page=1;render();break;
     case 'go-review': ui.tab='inventario';ui.st='review';ui.q='';ui.cat='';ui.sup='';render();window.scrollTo(0,0);break;
     case 'logout': logout();break;
     case 'retry': if(USER)enter(USER);break;
