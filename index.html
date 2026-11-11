@@ -1110,6 +1110,12 @@ async function openBankMonths(){
     '</tbody></table></div>';
   const mb=$('.modal .mb');if(mb)mb.innerHTML=h;
 }
+function bankCards(){
+  const bk=bankMonth(S.settlements,ymd(new Date()).slice(0,7));
+  return ''+
+    '<div class="stat bank" data-act="bank-months" role="button" tabindex="0" title="Ver lo que entró al banco mes por mes"><div class="v">'+fm(bk.total)+'</div><div class="l">Entró al banco este mes<small>tarjetas, MP, transferencias · ver por mes ›</small></div></div>'+
+    '<div class="stat bank" data-act="bank-months" role="button" tabindex="0" title="Ver lo que entró al banco mes por mes"><div class="v">'+fm(bk.transfer)+'</div><div class="l">Transferencias este mes<small>'+bk.transferN+' cobro'+(bk.transferN===1?'':'s')+' · ver por mes ›</small></div></div>';
+}
 function viewPanel(){
   if(!S.products.length){
     return '<div class="card empty"><h3>Bienvenida a '+esc(storeName())+'</h3><p>Todavía no hay productos cargados. Podés empezar así:</p>'+
@@ -1129,10 +1135,8 @@ function viewPanel(){
   const nrev=S.products.filter(p=>p.review).length;
   if(nrev) h+='<div class="banner info"><div><b>'+nrev+' producto'+(nrev>1?'s':'')+' del Excel con datos para revisar.</b> Falta el costo o la cantidad, o el precio parece raro.</div><button class="btn" data-act="go-review">Ver productos</button></div>';
   if(need.length) h+='<div class="banner"><div><b>'+need.length+' producto'+(need.length>1?'s':'')+' necesita'+(need.length>1?'n':'')+' reposición</b> ('+out+' sin stock).</div><button class="btn" data-act="nav" data-tab="faltantes">Ver lista de faltantes</button></div>';
-  const bk=bankMonth(S.settlements,ymd(new Date()).slice(0,7));
   h+='<div class="stats">'+
-    '<div class="stat bank" data-act="bank-months" role="button" tabindex="0" title="Ver lo que entró al banco mes por mes"><div class="v">'+fm(bk.total)+'</div><div class="l">Entró al banco este mes<small>tarjetas, MP, transferencias · ver por mes ›</small></div></div>'+
-    '<div class="stat bank" data-act="bank-months" role="button" tabindex="0" title="Ver lo que entró al banco mes por mes"><div class="v">'+fm(bk.transfer)+'</div><div class="l">Transferencias este mes<small>'+bk.transferN+' cobro'+(bk.transferN===1?'':'s')+' · ver por mes ›</small></div></div>'+
+    bankCards()+
     '<div class="stat"><div class="v">'+fm(todayTotal)+'</div><div class="l">Vendido hoy · '+today.length+' venta'+(today.length===1?'':'s')+'</div></div>'+
     '<div class="stat"><div class="v">'+(sess?fm(cajaTotals(sess).expected):'—')+'</div><div class="l">'+(sess?'Efectivo esperado en caja':'Caja cerrada')+'</div></div>'+
     '<div class="stat alert"><div class="v">'+fm(pendEl)+'</div><div class="l">Por acreditar (tarjetas, MP)</div></div>'+
@@ -1476,7 +1480,7 @@ function viewCaja(){
   const sess=currentSession();
   let h='';
   if(!sess){
-    h+='<div class="card empty"><h3>La caja está cerrada</h3><p>Abrí la caja con el efectivo inicial para empezar a registrar ventas.</p><button class="btn primary" data-act="caja-open">Abrir caja</button></div>';
+    h+='<div class="card empty"><h3>La caja está cerrada</h3><p>Abrí la caja con el efectivo inicial para empezar a registrar ventas.</p><button class="btn primary" data-act="caja-open">Abrir caja</button></div><div class="spacer"></div><div class="stats">'+bankCards()+'</div><div class="spacer"></div>';
   } else {
     const t=cajaTotals(sess);
     h+='<div class="banner good"><div><b>Caja abierta</b> desde '+fdate(sess.openedAt)+'</div><button class="btn" data-act="caja-close">'+ic('lock',16)+'Cerrar caja</button></div>'+
@@ -1484,6 +1488,7 @@ function viewCaja(){
     '<div class="stat"><div class="v">'+fm(t.total)+'</div><div class="l">Ventas del turno ('+t.count+')</div></div>'+
     '<div class="stat"><div class="v">'+fm(t.cash)+'</div><div class="l">Cobrado en efectivo</div></div>'+
     '<div class="stat alert"><div class="v">'+fm(t.expected)+'</div><div class="l">Efectivo que debería haber</div></div></div><div class="spacer"></div>'+
+    '<div class="stats">'+bankCards()+'</div><div class="spacer"></div>'+
     '<div class="grid2"><div class="card"><div class="h3">Ventas por forma de pago</div>'+
     (Object.keys(t.byM).length?Object.keys(t.byM).map(k=>'<div class="gh" style="margin:0;padding:6px 0;border-bottom:1px solid var(--line)"><span>'+esc(k)+'</span><b>'+fm(t.byM[k])+'</b></div>').join(''):'<div class="muted">Sin ventas todavía.</div>')+
     '</div><div class="card"><div class="gh"><div class="h3" style="margin:0">Ingresos y egresos de efectivo</div><div class="row noprint"><button class="btn sm" data-act="caja-move" data-type="in">+ Ingreso</button><button class="btn sm" data-act="caja-move" data-type="out">− Egreso</button></div></div>'+
