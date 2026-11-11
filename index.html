@@ -106,7 +106,7 @@ main>.title{display:none}
 .stat.alert{border-color:#F6C8B2;background:#FFFAF7}
 .stat.alert .v{color:var(--accent-2)}
 .stat.danger .v{color:var(--red)}
-.stat.bank{border-color:#BDE8C9;background:var(--green-bg);cursor:pointer}.stat.bank .v{color:var(--green)}.stat.bank:hover{border-color:var(--green)}.stat.bank .l small{display:block;font-weight:400;font-size:12px}
+.stat.bank{border-color:#BDE8C9;background:var(--green-bg);cursor:pointer}.stat.bank .v{color:var(--green)}.stat.bank:hover{border-color:var(--green)}.stat.bank .l small,.stat.bankout .l small{display:block;font-weight:400;font-size:12px}.stat.bankout{cursor:pointer}.stat.bankout .v{color:var(--red)}.stat.bankout:hover{border-color:var(--red)}
 .banktbl td small{display:block;color:var(--muted);font-size:12px;white-space:normal}
 
 .banner{background:var(--amber-bg);border:1px solid #F5D3A1;border-left:4px solid #E58E1B;color:#6B3A0A;border-radius:var(--r-md);padding:14px 18px;display:flex;gap:14px;align-items:center;justify-content:space-between;flex-wrap:wrap;margin-bottom:16px}
@@ -283,7 +283,7 @@ input[data-num]{text-align:right;font-variant-numeric:tabular-nums}
 body.no-catalog [data-act=price-ok],body.no-catalog [data-act=new-product],body.no-catalog [data-act=edit-product],body.no-catalog [data-act=del-product],body.no-catalog [data-act=prices],body.no-catalog [data-act=import-csv],body.no-catalog [data-act=seed],body.no-catalog [data-act=cat-add],body.no-catalog [data-act=cat-edit],body.no-catalog [data-act=cat-del],body.no-catalog [data-act=sup-add],body.no-catalog [data-act=sup-edit],body.no-catalog [data-act=sup-del],body.no-catalog [data-act=pm-add],body.no-catalog [data-act=pm-edit],body.no-catalog [data-act=pm-del],body.no-catalog [data-act=combo-new],body.no-catalog [data-act=combo-edit],body.no-catalog [data-act=combo-del],
 body.no-stock [data-act=move],
 body.no-sell [data-act=new-sale],body.no-sell [data-act=void-sale],
-body.no-cash [data-act=caja-open],body.no-cash [data-act=caja-move],body.no-cash [data-act=caja-close],
+body.no-cash [data-act=bank-move],body.no-cash [data-act=bank-void],body.no-cash [data-act=caja-open],body.no-cash [data-act=caja-move],body.no-cash [data-act=caja-close],
 body.no-settle [data-act=settle],body.no-settle [data-act=settle-bulk],body.no-settle [data-sel]{display:none!important}
 .myrole{font-size:11.5px;color:#9FB3C2}
 .myrole b{color:#fff;font-weight:600}
@@ -388,7 +388,7 @@ function can(perm,id){return (PERMS[curRole(id)]||[]).indexOf(perm)>-1}
 function ownedCount(){return Object.keys(MYROLES).filter(k=>MYROLES[k]==='owner').length}
 function canCreateStore(){return ME.admin||ownedCount()<MAX_OWN}
 // Qué permiso pide cada botón (la base de datos igual lo controla por su lado)
-const ACT_PERM={'price-ok':'catalog','new-product':'catalog','edit-product':'catalog','del-product':'catalog','prices':'catalog','import-csv':'catalog','seed':'catalog','cat-add':'catalog','cat-edit':'catalog','cat-del':'catalog','sup-add':'catalog','sup-edit':'catalog','sup-del':'catalog','pm-add':'catalog','pm-edit':'catalog','pm-del':'catalog','move':'stock','combo-new':'catalog','combo-edit':'catalog','combo-del':'catalog','pos-combo':'sell','new-sale':'sell','pos-confirm':'sell','void-sale':'sell','caja-open':'cash','caja-move':'cash','caja-close':'cash','settle':'settle','settle-bulk':'settle'};
+const ACT_PERM={'bank-move':'cash','bank-void':'cash','price-ok':'catalog','new-product':'catalog','edit-product':'catalog','del-product':'catalog','prices':'catalog','import-csv':'catalog','seed':'catalog','cat-add':'catalog','cat-edit':'catalog','cat-del':'catalog','sup-add':'catalog','sup-edit':'catalog','sup-del':'catalog','pm-add':'catalog','pm-edit':'catalog','pm-del':'catalog','move':'stock','combo-new':'catalog','combo-edit':'catalog','combo-del':'catalog','pos-combo':'sell','new-sale':'sell','pos-confirm':'sell','void-sale':'sell','caja-open':'cash','caja-move':'cash','caja-close':'cash','settle':'settle','settle-bulk':'settle'};
 function applyPermClasses(){['catalog','stock','sell','cash','settle','members'].forEach(k=>document.body.classList.toggle('no-'+k,!!STORE&&!can(k)))}
 function setStore(id){STORE=id;try{if(sb&&sb._setStore)sb._setStore(id)}catch(e){}}
 function storeName(){const s=STORES.find(x=>x.id===STORE);return s?s.name:'Ferretería'}
@@ -448,8 +448,10 @@ function mergeById(old,add,cap){
 }
 function photoUrl(path){return sbClient().storage.from(BUCKET).getPublicUrl(path).data.publicUrl}
 function rebuildPhotos(){PH={};S.products.forEach(p=>{if(p.photoPath)PH[p.id]=photoUrl(p.photoPath)})}
+function mBank(r){return {id:r.id,date:r.date,createdAt:r.created_at,type:r.type,amount:N(r.amount),concept:r.concept||'',note:r.note||'',via:r.via||'',voided:!!r.voided,voidedBy:r.voided_by||'',by:r.by_email||''}}
 function mCombo(r){return {id:r.id,name:r.name,price:N(r.price),items:(Array.isArray(r.items)?r.items:[]).map(x=>({productId:x.productId,qty:N(x.qty)})),notes:r.notes||'',active:r.active!==false}}
 const LOADERS={
+  bank_moves:async()=>{try{S.bankMoves=(await pages(()=>sb.from('bank_moves').select('*').order('created_at',{ascending:false}).order('id'),20000)).map(mBank);HAS_BANK=true}catch(e){S.bankMoves=[];HAS_BANK=false}},
   combos:async()=>{try{S.combos=(await pages(()=>sb.from('combos').select('*').order('name').order('id'))).map(mCombo)}catch(e){S.combos=[]}},
   categories:async()=>{S.categories=(await pages(()=>sb.from('categories').select('*').order('name').order('id'))).map(mCat)},
   suppliers:async()=>{S.suppliers=(await pages(()=>sb.from('suppliers').select('*').order('name').order('id'))).map(mSup)},
@@ -476,7 +478,7 @@ const LOADERS={
     const open=S.cash.sessions.find(s=>!s.closedAt);S.cash.current=open?open.id:null;
   }
 };
-const ORDER=['combos','categories','suppliers','pay_methods','products','stock_movements','sales','settlements','cash_sessions'];
+const ORDER=['bank_moves','combos','categories','suppliers','pay_methods','products','stock_movements','sales','settlements','cash_sessions'];
 async function reload(tables,full){
   sbClient();
   const list=(tables||ORDER).filter(k=>LOADERS[k]);
@@ -1089,24 +1091,27 @@ function bankEntry(x){
   else if(x.kind!=='electronic')return null;
   return {month:String(x.settledDate).slice(0,7),via:via||'Otro',amount:x.received!=null?x.received:x.net,fee:x.kind==='electronic'?(x.fee||0):0,transfer:/transf/i.test(via),fiado:x.kind==='credit'};
 }
-function bankMonth(list,ym){const r={total:0,transfer:0,transferN:0};list.forEach(x=>{const e=bankEntry(x);if(!e||e.month!==ym)return;r.total+=e.amount;if(e.transfer){r.transfer+=e.amount;r.transferN++}});return r}
+function bankMonth(list,ym){const r={total:0,transfer:0,transferN:0,out:0,outN:0};list.forEach(x=>{const e=bankEntry(x);if(!e||e.month!==ym)return;r.total+=e.amount;if(e.transfer){r.transfer+=e.amount;r.transferN++}});
+  (S.bankMoves||[]).forEach(m=>{if(m.voided||String(m.date).slice(0,7)!==ym)return;if(m.type==='in')r.total+=m.amount;else{r.out+=m.amount;r.outN++}});return r}
 async function openBankMonths(){
   openSheet('Dinero que entró al banco','<div class="card empty">Cargando…</div>');
   let rows;
   try{rows=(await pages(()=>sb.from('settlements').select('*').eq('status','settled').order('settled_date',{ascending:false}).order('id'),20000)).map(mSet)}
   catch(e){toast(errMsg(e),'err');closeModal();return}
   const M={};
-  rows.forEach(x=>{const e=bankEntry(x);if(!e)return;const m=M[e.month]=M[e.month]||{total:0,transfer:0,fee:0,n:0,via:{}};
+  rows.forEach(x=>{const e=bankEntry(x);if(!e)return;const m=M[e.month]=M[e.month]||{total:0,transfer:0,fee:0,n:0,via:{},out:0,outs:[]};
     m.total+=e.amount;m.fee+=e.fee;m.n++;if(e.transfer)m.transfer+=e.amount;m.via[e.via]=(m.via[e.via]||0)+e.amount});
+  (S.bankMoves||[]).forEach(b=>{if(b.voided)return;const k=String(b.date).slice(0,7);const m=M[k]=M[k]||{total:0,transfer:0,fee:0,n:0,via:{},out:0,outs:[]};m.out=m.out||0;m.outs=m.outs||[];
+    if(b.type==='in'){m.total+=b.amount;m.n++;const v='Ingreso manual';m.via[v]=(m.via[v]||0)+b.amount}else{m.out+=b.amount;m.outs.push(b)}});
   const ks=Object.keys(M).sort().reverse();
   const pend=S.settlements.filter(x=>x.status==='pending'&&x.kind==='electronic').reduce((a,x)=>a+x.net,0);
-  let h='<p class="muted small" style="margin-top:0">Lo que se acreditó en la cuenta (tarjetas, Mercado Pago, transferencias, ya descontadas las comisiones) y lo cobrado de cuenta corriente sin efectivo, según el día en que se marcó como acreditado. Los retiros o pagos que hagan desde el banco no se registran acá.</p>';
+  let h='<p class="muted small" style="margin-top:0">Lo que se acreditó en la cuenta (tarjetas, Mercado Pago, transferencias, ya descontadas las comisiones) y lo cobrado de cuenta corriente sin efectivo, según el día en que se marcó como acreditado. '+(HAS_BANK?'Los pagos o retiros que se hacen desde el banco se cargan en Caja → “Ingresos y egresos de banco” y se restan en la columna Salió.':'Los retiros o pagos que hagan desde el banco no se registran acá.')+'</p>';
   if(pend)h+='<div class="banner info" style="margin:0 0 12px"><div>Además hay <b>'+fm(pend)+'</b> por acreditar (todavía no entró).</div></div>';
   if(!ks.length)return $('.modal .mb')&&($('.modal .mb').innerHTML=h+'<div class="card empty">Todavía no hay nada acreditado.</div>');
-  const tot=ks.reduce((a,k)=>a+M[k].total,0),totT=ks.reduce((a,k)=>a+M[k].transfer,0);
-  h+='<div class="stats" style="margin-bottom:12px"><div class="stat bank"><div class="v">'+fm(tot)+'</div><div class="l">Total acreditado ('+ks.length+' mes'+(ks.length>1?'es':'')+')</div></div><div class="stat bank"><div class="v">'+fm(totT)+'</div><div class="l">Total en transferencias</div></div></div>';
-  h+='<div style="overflow-x:auto"><table class="tbl banktbl"><thead><tr><th>Mes</th><th class="num">Entró al banco</th><th class="num">Transferencias</th><th class="num">Comisiones</th><th>Por forma de pago</th></tr></thead><tbody>'+
-    ks.map(k=>{const m=M[k];return '<tr><td class="first"><b>'+monthLabel(k)+'</b><small>'+m.n+' cobro'+(m.n===1?'':'s')+'</small></td><td data-label="Entró al banco" class="num"><b>'+fm(m.total)+'</b></td><td data-label="Transferencias" class="num">'+fm(m.transfer)+'</td><td data-label="Comisiones" class="num">'+fm(m.fee)+'</td><td data-label="Por forma de pago"><small>'+Object.keys(m.via).sort((a,b)=>m.via[b]-m.via[a]).map(v=>esc(v)+': '+fm(m.via[v])).join(' · ')+'</small></td></tr>'}).join('')+
+  const tot=ks.reduce((a,k)=>a+M[k].total,0),totT=ks.reduce((a,k)=>a+M[k].transfer,0),totO=ks.reduce((a,k)=>a+(M[k].out||0),0);
+  h+='<div class="stats" style="margin-bottom:12px"><div class="stat bank"><div class="v">'+fm(tot)+'</div><div class="l">Total acreditado ('+ks.length+' mes'+(ks.length>1?'es':'')+')</div></div><div class="stat bank"><div class="v">'+fm(totT)+'</div><div class="l">Total en transferencias</div></div>'+(HAS_BANK?'<div class="stat bankout"><div class="v">'+fm(totO)+'</div><div class="l">Total que salió del banco</div></div>':'')+'</div>';
+  h+='<div style="overflow-x:auto"><table class="tbl banktbl"><thead><tr><th>Mes</th><th class="num">Entró al banco</th><th class="num">Transferencias</th><th class="num">Comisiones</th>'+(HAS_BANK?'<th class="num">Salió</th><th class="num">Neto</th>':'')+'<th>Por forma de pago</th></tr></thead><tbody>'+
+    ks.map(k=>{const m=M[k];return '<tr><td class="first"><b>'+monthLabel(k)+'</b><small>'+m.n+' cobro'+(m.n===1?'':'s')+'</small></td><td data-label="Entró al banco" class="num"><b>'+fm(m.total)+'</b></td><td data-label="Transferencias" class="num">'+fm(m.transfer)+'</td><td data-label="Comisiones" class="num">'+fm(m.fee)+'</td>'+(HAS_BANK?'<td data-label="Salió" class="num neg">'+(m.out?'−'+fm(m.out):'—')+'</td><td data-label="Neto" class="num"><b>'+fm(m.total-(m.out||0))+'</b></td>':'')+'<td data-label="Por forma de pago"><small>'+Object.keys(m.via).sort((a,b)=>m.via[b]-m.via[a]).map(v=>esc(v)+': '+fm(m.via[v])).join(' · ')+((m.outs||[]).length?'<br>Salidas: '+m.outs.map(o=>esc(o.concept)+' '+fm(o.amount)).join(' · '):'')+'</small></td></tr>'}).join('')+
     '</tbody></table></div>';
   const mb=$('.modal .mb');if(mb)mb.innerHTML=h;
 }
@@ -1114,7 +1119,45 @@ function bankCards(){
   const bk=bankMonth(S.settlements,ymd(new Date()).slice(0,7));
   return ''+
     '<div class="stat bank" data-act="bank-months" role="button" tabindex="0" title="Ver lo que entró al banco mes por mes"><div class="v">'+fm(bk.total)+'</div><div class="l">Entró al banco este mes<small>tarjetas, MP, transferencias · ver por mes ›</small></div></div>'+
-    '<div class="stat bank" data-act="bank-months" role="button" tabindex="0" title="Ver lo que entró al banco mes por mes"><div class="v">'+fm(bk.transfer)+'</div><div class="l">Transferencias este mes<small>'+bk.transferN+' cobro'+(bk.transferN===1?'':'s')+' · ver por mes ›</small></div></div>';
+    '<div class="stat bank" data-act="bank-months" role="button" tabindex="0" title="Ver lo que entró al banco mes por mes"><div class="v">'+fm(bk.transfer)+'</div><div class="l">Transferencias este mes<small>'+bk.transferN+' cobro'+(bk.transferN===1?'':'s')+' · ver por mes ›</small></div></div>'+
+    (HAS_BANK?'<div class="stat bankout" data-act="bank-months" role="button" tabindex="0" title="Ver mes por mes"><div class="v">'+fm(bk.out)+'</div><div class="l">Salió del banco este mes<small>'+bk.outN+' pago'+(bk.outN===1?'':'s')+' · queda '+fm(bk.total-bk.out)+' neto ›</small></div></div>':'');
+}
+// En Caja: los cuadros del banco + los ingresos/egresos que se hacen desde el banco (transferencias)
+function bankSection(){
+  const ym=ymd(new Date()).slice(0,7);
+  let h='<div class="stats">'+bankCards()+'</div><div class="spacer"></div>';
+  if(!HAS_BANK)return h;
+  const ms=(S.bankMoves||[]).filter(m=>String(m.date).slice(0,7)===ym);
+  h+='<div class="card"><div class="gh"><div class="h3" style="margin:0">Ingresos y egresos de banco / transferencias</div><div class="row noprint"><button class="btn sm" data-act="bank-move" data-type="in">+ Ingreso</button><button class="btn sm" data-act="bank-move" data-type="out">− Egreso</button></div></div>'+
+    (ms.length?ms.map(bankMoveRow).join(''):'<div class="muted small">Registrá acá lo que se paga o se saca de la cuenta del banco o Mercado Pago (por ejemplo, una transferencia a un proveedor), para que el saldo del mes dé bien.</div>')+
+    '</div><div class="spacer"></div>';
+  return h;
+}
+function bankMoveRow(m){
+  return '<div class="gh" style="margin:0;padding:6px 0;border-bottom:1px solid var(--line)'+(m.voided?';opacity:.55':'')+'"><span>'+(m.voided?'<s>':'')+esc(m.concept)+(m.voided?'</s> <span class="pill">anulado</span>':'')+
+    '<div class="small muted">'+fdate(m.createdAt)+(m.via?' · '+esc(m.via):'')+(m.note?' · '+esc(m.note):'')+(m.by?' · '+esc(m.by):'')+(m.voided&&m.voidedBy?' · anuló '+esc(m.voidedBy):'')+'</div></span>'+
+    '<span class="row" style="gap:8px;flex-wrap:nowrap"><b class="'+(m.type==='in'?'posv':'neg')+'">'+(m.type==='in'?'+':'−')+fm(m.amount)+'</b>'+(m.voided?'':'<button class="btn sm icon noprint" data-act="bank-void" data-id="'+m.id+'" title="Anular este movimiento" aria-label="Anular">'+ic('x',14)+'</button>')+'</span></div>';
+}
+function bankMoveModal(type){
+  const vias=['Transferencia'].concat(S.payMethods.filter(m=>m.type==='electronic'&&!/transf/i.test(m.name)).map(m=>m.name));
+  openModal(type==='in'?'Ingreso al banco':'Egreso del banco / transferencia',
+    '<div class="fgrid"><label class="f">Monto<input name="amount" type="text" inputmode="decimal" autocomplete="off" data-num required></label>'+
+    '<label class="f">Desde / hacia<select name="via">'+vias.map(v=>'<option>'+esc(v)+'</option>').join('')+'<option>Otra cuenta</option></select></label>'+
+    '<label class="f full">Motivo *<input name="concept" list="bc" required minlength="3" maxlength="120" autocomplete="off" value="" placeholder="'+(type==='out'?'¿Para qué sale la plata? Ej: transferencia a proveedor X':'¿Por qué entra la plata? Ej: depósito')+'"><datalist id="bc">'+['Pago a proveedor','Pago de servicios','Retiro del dueño','Depósito','Gastos varios'].map(c=>'<option value="'+c+'">').join('')+'</datalist></label>'+
+    '<label class="f full">Nota (opcional)<input name="note" placeholder="Ej: nombre, número de factura"></label></div>',
+    async fd=>{
+      const a=round2(num(fd.amount));if(a<=0){toast('Ingresá un monto mayor a 0','err');return false}
+      const cpt=(fd.concept||'').trim();if(cpt.length<3){toast('Escribí el motivo del '+(type==='out'?'egreso':'ingreso'),'err');const el=$('#mform [name=concept]');if(el)el.focus();return false}
+      const r=await attempt(()=>sb.from('bank_moves').insert({id:uid(),type,amount:a,concept:cpt,note:(fd.note||'').trim(),via:fd.via||''}));
+      await safeReload(['bank_moves']);
+      if(!r.ok)return false;
+      toast(type==='out'?'Egreso del banco registrado':'Ingreso al banco registrado');
+    });
+}
+function bankVoidModal(id){
+  const m=(S.bankMoves||[]).find(x=>x.id===id);if(!m)return;
+  openModal('Anular movimiento del banco','<p>¿Anular <b>'+esc(m.concept)+'</b> por <b>'+fm(m.amount)+'</b>?</p><p class="muted small">Queda en la lista tachado y con el nombre de quien lo anuló. No se puede deshacer.</p>',
+    async()=>{const r=await attempt(()=>sb.from('bank_moves').update({voided:true}).eq('id',id));await safeReload(['bank_moves']);if(!r.ok)return false;toast('Movimiento anulado')},'Anular');
 }
 function viewPanel(){
   if(!S.products.length){
@@ -1480,7 +1523,7 @@ function viewCaja(){
   const sess=currentSession();
   let h='';
   if(!sess){
-    h+='<div class="card empty"><h3>La caja está cerrada</h3><p>Abrí la caja con el efectivo inicial para empezar a registrar ventas.</p><button class="btn primary" data-act="caja-open">Abrir caja</button></div><div class="spacer"></div><div class="stats">'+bankCards()+'</div><div class="spacer"></div>';
+    h+='<div class="card empty"><h3>La caja está cerrada</h3><p>Abrí la caja con el efectivo inicial para empezar a registrar ventas.</p><button class="btn primary" data-act="caja-open">Abrir caja</button></div><div class="spacer"></div>'+bankSection();
   } else {
     const t=cajaTotals(sess);
     h+='<div class="banner good"><div><b>Caja abierta</b> desde '+fdate(sess.openedAt)+'</div><button class="btn" data-act="caja-close">'+ic('lock',16)+'Cerrar caja</button></div>'+
@@ -1488,7 +1531,7 @@ function viewCaja(){
     '<div class="stat"><div class="v">'+fm(t.total)+'</div><div class="l">Ventas del turno ('+t.count+')</div></div>'+
     '<div class="stat"><div class="v">'+fm(t.cash)+'</div><div class="l">Cobrado en efectivo</div></div>'+
     '<div class="stat alert"><div class="v">'+fm(t.expected)+'</div><div class="l">Efectivo que debería haber</div></div></div><div class="spacer"></div>'+
-    '<div class="stats">'+bankCards()+'</div><div class="spacer"></div>'+
+    bankSection()+
     '<div class="grid2"><div class="card"><div class="h3">Ventas por forma de pago</div>'+
     (Object.keys(t.byM).length?Object.keys(t.byM).map(k=>'<div class="gh" style="margin:0;padding:6px 0;border-bottom:1px solid var(--line)"><span>'+esc(k)+'</span><b>'+fm(t.byM[k])+'</b></div>').join(''):'<div class="muted">Sin ventas todavía.</div>')+
     '</div><div class="card"><div class="gh"><div class="h3" style="margin:0">Ingresos y egresos de efectivo</div><div class="row noprint"><button class="btn sm" data-act="caja-move" data-type="in">+ Ingreso</button><button class="btn sm" data-act="caja-move" data-type="out">− Egreso</button></div></div>'+
@@ -1657,7 +1700,7 @@ function viewInventario(){
 }
 // Precios que parecen errores de carga: comparados con el costo y con el resto de su categoría
 function median(a){if(!a.length)return 0;a=a.slice().sort((x,y)=>x-y);const m=a.length>>1;return a.length%2?a[m]:(a[m-1]+a[m])/2}
-let _pf=null,HAS_PRICE_OK=false;   // el botón "Está bien" aparece solo cuando la base ya tiene las columnas (supabase-preciook.sql)
+let _pf=null,HAS_PRICE_OK=false,HAS_BANK=false;   // el botón "Está bien" aparece solo cuando la base ya tiene las columnas (supabase-preciook.sql)
 function priceFlags(){
   if(_pf&&_pf.src===S.products&&_pf.len===S.products.length&&_pf.sig===pfSig())return _pf;
   const byCat={};S.products.forEach(p=>{const v=Number(p.price)||0;if(v>0)(byCat[p.categoryId||'']=byCat[p.categoryId||'']||[]).push(v)});
@@ -2526,6 +2569,8 @@ document.addEventListener('click',e=>{
     case 'seed': seedFromUI();break;
     case 'price-ok': markPriceOk(id,t);break;
     case 'bank-months': openBankMonths();break;
+    case 'bank-move': bankMoveModal(t.getAttribute('data-type'));break;
+    case 'bank-void': bankVoidModal(id);break;
     case 'see-price-flags': ui.st='price';ui.sort='pdesc';ui.page=1;render();break;
     case 'go-review': ui.tab='inventario';ui.st='review';ui.q='';ui.cat='';ui.sup='';render();window.scrollTo(0,0);break;
     case 'logout': logout();break;
