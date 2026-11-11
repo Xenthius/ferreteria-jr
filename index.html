@@ -106,6 +106,8 @@ main>.title{display:none}
 .stat.alert{border-color:#F6C8B2;background:#FFFAF7}
 .stat.alert .v{color:var(--accent-2)}
 .stat.danger .v{color:var(--red)}
+.stat.bank{border-color:#BDE8C9;background:var(--green-bg);cursor:pointer}.stat.bank .v{color:var(--green)}.stat.bank:hover{border-color:var(--green)}.stat.bank .l small{display:block;font-weight:400;font-size:12px}
+.banktbl td small{display:block;color:var(--muted);font-size:12px;white-space:normal}
 
 .banner{background:var(--amber-bg);border:1px solid #F5D3A1;border-left:4px solid #E58E1B;color:#6B3A0A;border-radius:var(--r-md);padding:14px 18px;display:flex;gap:14px;align-items:center;justify-content:space-between;flex-wrap:wrap;margin-bottom:16px}
 .banner.good{background:var(--green-bg);border-color:#BDE8C9;border-left-color:#22A559;color:#11512B}
@@ -1077,6 +1079,37 @@ function render(){
 }
 
 /* ---------- Panel ---------- */
+// ===== Dinero en banco: lo acreditado (tarjetas, MP, transferencias) y el fiado cobrado sin efectivo =====
+const MESES=['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+function monthLabel(ym){const [y,m]=ym.split('-');return MESES[parseInt(m,10)-1].replace(/^./,c=>c.toUpperCase())+' '+y}
+function bankEntry(x){
+  if(x.status!=='settled'||!x.settledDate)return null;
+  const via=x.kind==='credit'?(x.collectedVia||''):(x.methodName||'');
+  if(x.kind==='credit'){const pm=S.payMethods.find(m=>m.name===via);if(!via||(pm?pm.type==='cash':/efectivo/i.test(via)))return null}
+  else if(x.kind!=='electronic')return null;
+  return {month:String(x.settledDate).slice(0,7),via:via||'Otro',amount:x.received!=null?x.received:x.net,fee:x.kind==='electronic'?(x.fee||0):0,transfer:/transf/i.test(via),fiado:x.kind==='credit'};
+}
+function bankMonth(list,ym){const r={total:0,transfer:0,transferN:0};list.forEach(x=>{const e=bankEntry(x);if(!e||e.month!==ym)return;r.total+=e.amount;if(e.transfer){r.transfer+=e.amount;r.transferN++}});return r}
+async function openBankMonths(){
+  openSheet('Dinero que entró al banco','<div class="card empty">Cargando…</div>');
+  let rows;
+  try{rows=(await pages(()=>sb.from('settlements').select('*').eq('status','settled').order('settled_date',{ascending:false}).order('id'),20000)).map(mSet)}
+  catch(e){toast(errMsg(e),'err');closeModal();return}
+  const M={};
+  rows.forEach(x=>{const e=bankEntry(x);if(!e)return;const m=M[e.month]=M[e.month]||{total:0,transfer:0,fee:0,n:0,via:{}};
+    m.total+=e.amount;m.fee+=e.fee;m.n++;if(e.transfer)m.transfer+=e.amount;m.via[e.via]=(m.via[e.via]||0)+e.amount});
+  const ks=Object.keys(M).sort().reverse();
+  const pend=S.settlements.filter(x=>x.status==='pending'&&x.kind==='electronic').reduce((a,x)=>a+x.net,0);
+  let h='<p class="muted small" style="margin-top:0">Lo que se acreditó en la cuenta (tarjetas, Mercado Pago, transferencias, ya descontadas las comisiones) y lo cobrado de cuenta corriente sin efectivo, según el día en que se marcó como acreditado. Los retiros o pagos que hagan desde el banco no se registran acá.</p>';
+  if(pend)h+='<div class="banner info" style="margin:0 0 12px"><div>Además hay <b>'+fm(pend)+'</b> por acreditar (todavía no entró).</div></div>';
+  if(!ks.length)return $('.modal .mb')&&($('.modal .mb').innerHTML=h+'<div class="card empty">Todavía no hay nada acreditado.</div>');
+  const tot=ks.reduce((a,k)=>a+M[k].total,0),totT=ks.reduce((a,k)=>a+M[k].transfer,0);
+  h+='<div class="stats" style="margin-bottom:12px"><div class="stat bank"><div class="v">'+fm(tot)+'</div><div class="l">Total acreditado ('+ks.length+' mes'+(ks.length>1?'es':'')+')</div></div><div class="stat bank"><div class="v">'+fm(totT)+'</div><div class="l">Total en transferencias</div></div></div>';
+  h+='<div style="overflow-x:auto"><table class="tbl banktbl"><thead><tr><th>Mes</th><th class="num">Entró al banco</th><th class="num">Transferencias</th><th class="num">Comisiones</th><th>Por forma de pago</th></tr></thead><tbody>'+
+    ks.map(k=>{const m=M[k];return '<tr><td class="first"><b>'+monthLabel(k)+'</b><small>'+m.n+' cobro'+(m.n===1?'':'s')+'</small></td><td data-label="Entró al banco" class="num"><b>'+fm(m.total)+'</b></td><td data-label="Transferencias" class="num">'+fm(m.transfer)+'</td><td data-label="Comisiones" class="num">'+fm(m.fee)+'</td><td data-label="Por forma de pago"><small>'+Object.keys(m.via).sort((a,b)=>m.via[b]-m.via[a]).map(v=>esc(v)+': '+fm(m.via[v])).join(' · ')+'</small></td></tr>'}).join('')+
+    '</tbody></table></div>';
+  const mb=$('.modal .mb');if(mb)mb.innerHTML=h;
+}
 function viewPanel(){
   if(!S.products.length){
     return '<div class="card empty"><h3>Bienvenida a '+esc(storeName())+'</h3><p>Todavía no hay productos cargados. Podés empezar así:</p>'+
@@ -1096,7 +1129,10 @@ function viewPanel(){
   const nrev=S.products.filter(p=>p.review).length;
   if(nrev) h+='<div class="banner info"><div><b>'+nrev+' producto'+(nrev>1?'s':'')+' del Excel con datos para revisar.</b> Falta el costo o la cantidad, o el precio parece raro.</div><button class="btn" data-act="go-review">Ver productos</button></div>';
   if(need.length) h+='<div class="banner"><div><b>'+need.length+' producto'+(need.length>1?'s':'')+' necesita'+(need.length>1?'n':'')+' reposición</b> ('+out+' sin stock).</div><button class="btn" data-act="nav" data-tab="faltantes">Ver lista de faltantes</button></div>';
+  const bk=bankMonth(S.settlements,ymd(new Date()).slice(0,7));
   h+='<div class="stats">'+
+    '<div class="stat bank" data-act="bank-months" role="button" tabindex="0" title="Ver lo que entró al banco mes por mes"><div class="v">'+fm(bk.total)+'</div><div class="l">Entró al banco este mes<small>tarjetas, MP, transferencias · ver por mes ›</small></div></div>'+
+    '<div class="stat bank" data-act="bank-months" role="button" tabindex="0" title="Ver lo que entró al banco mes por mes"><div class="v">'+fm(bk.transfer)+'</div><div class="l">Transferencias este mes<small>'+bk.transferN+' cobro'+(bk.transferN===1?'':'s')+' · ver por mes ›</small></div></div>'+
     '<div class="stat"><div class="v">'+fm(todayTotal)+'</div><div class="l">Vendido hoy · '+today.length+' venta'+(today.length===1?'':'s')+'</div></div>'+
     '<div class="stat"><div class="v">'+(sess?fm(cajaTotals(sess).expected):'—')+'</div><div class="l">'+(sess?'Efectivo esperado en caja':'Caja cerrada')+'</div></div>'+
     '<div class="stat alert"><div class="v">'+fm(pendEl)+'</div><div class="l">Por acreditar (tarjetas, MP)</div></div>'+
@@ -2484,6 +2520,7 @@ document.addEventListener('click',e=>{
     case 'template-csv': templateCSV();break;
     case 'seed': seedFromUI();break;
     case 'price-ok': markPriceOk(id,t);break;
+    case 'bank-months': openBankMonths();break;
     case 'see-price-flags': ui.st='price';ui.sort='pdesc';ui.page=1;render();break;
     case 'go-review': ui.tab='inventario';ui.st='review';ui.q='';ui.cat='';ui.sup='';render();window.scrollTo(0,0);break;
     case 'logout': logout();break;
