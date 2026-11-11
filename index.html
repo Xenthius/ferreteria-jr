@@ -274,11 +274,11 @@ input[data-num]{text-align:right;font-variant-numeric:tabular-nums}
 .combocard{display:block;text-align:left;border:1px solid var(--line);border-radius:var(--r-md,12px);background:var(--surface,#fff);padding:12px;font:inherit;color:inherit;cursor:pointer}
 .combocard:hover{border-color:var(--accent);background:var(--accent-soft)}
 .cbitems{display:grid;gap:6px;margin-top:6px}
-.pfwarn{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:8px 10px;margin:4px 0 8px;border-radius:8px;background:var(--amber-bg);color:var(--amber);font-size:13px}.pfwarn span{flex:1;min-width:0}.pfbad{color:var(--red);cursor:help}.pfwhy{color:var(--red);max-width:260px;margin-left:auto;white-space:normal}
+.pfwarn{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:8px 10px;margin:4px 0 8px;border-radius:8px;background:var(--amber-bg);color:var(--amber);font-size:13px}.pfwarn span{flex:1;min-width:0}.pfbad{color:var(--red);cursor:help}.pfwhy{color:var(--red);max-width:260px;margin-left:auto;white-space:normal}.pfok{margin-top:4px}
 .cbitem{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:8px;align-items:center}
 .cbq{display:flex;align-items:center;gap:4px}.cbq input{width:70px}.cbq .cbu{min-width:42px}
 /* ---- Lo que el rol no permite, no se muestra ---- */
-body.no-catalog [data-act=new-product],body.no-catalog [data-act=edit-product],body.no-catalog [data-act=del-product],body.no-catalog [data-act=prices],body.no-catalog [data-act=import-csv],body.no-catalog [data-act=seed],body.no-catalog [data-act=cat-add],body.no-catalog [data-act=cat-edit],body.no-catalog [data-act=cat-del],body.no-catalog [data-act=sup-add],body.no-catalog [data-act=sup-edit],body.no-catalog [data-act=sup-del],body.no-catalog [data-act=pm-add],body.no-catalog [data-act=pm-edit],body.no-catalog [data-act=pm-del],body.no-catalog [data-act=combo-new],body.no-catalog [data-act=combo-edit],body.no-catalog [data-act=combo-del],
+body.no-catalog [data-act=price-ok],body.no-catalog [data-act=new-product],body.no-catalog [data-act=edit-product],body.no-catalog [data-act=del-product],body.no-catalog [data-act=prices],body.no-catalog [data-act=import-csv],body.no-catalog [data-act=seed],body.no-catalog [data-act=cat-add],body.no-catalog [data-act=cat-edit],body.no-catalog [data-act=cat-del],body.no-catalog [data-act=sup-add],body.no-catalog [data-act=sup-edit],body.no-catalog [data-act=sup-del],body.no-catalog [data-act=pm-add],body.no-catalog [data-act=pm-edit],body.no-catalog [data-act=pm-del],body.no-catalog [data-act=combo-new],body.no-catalog [data-act=combo-edit],body.no-catalog [data-act=combo-del],
 body.no-stock [data-act=move],
 body.no-sell [data-act=new-sale],body.no-sell [data-act=void-sale],
 body.no-cash [data-act=caja-open],body.no-cash [data-act=caja-move],body.no-cash [data-act=caja-close],
@@ -386,7 +386,7 @@ function can(perm,id){return (PERMS[curRole(id)]||[]).indexOf(perm)>-1}
 function ownedCount(){return Object.keys(MYROLES).filter(k=>MYROLES[k]==='owner').length}
 function canCreateStore(){return ME.admin||ownedCount()<MAX_OWN}
 // Qué permiso pide cada botón (la base de datos igual lo controla por su lado)
-const ACT_PERM={'new-product':'catalog','edit-product':'catalog','del-product':'catalog','prices':'catalog','import-csv':'catalog','seed':'catalog','cat-add':'catalog','cat-edit':'catalog','cat-del':'catalog','sup-add':'catalog','sup-edit':'catalog','sup-del':'catalog','pm-add':'catalog','pm-edit':'catalog','pm-del':'catalog','move':'stock','combo-new':'catalog','combo-edit':'catalog','combo-del':'catalog','pos-combo':'sell','new-sale':'sell','pos-confirm':'sell','void-sale':'sell','caja-open':'cash','caja-move':'cash','caja-close':'cash','settle':'settle','settle-bulk':'settle'};
+const ACT_PERM={'price-ok':'catalog','new-product':'catalog','edit-product':'catalog','del-product':'catalog','prices':'catalog','import-csv':'catalog','seed':'catalog','cat-add':'catalog','cat-edit':'catalog','cat-del':'catalog','sup-add':'catalog','sup-edit':'catalog','sup-del':'catalog','pm-add':'catalog','pm-edit':'catalog','pm-del':'catalog','move':'stock','combo-new':'catalog','combo-edit':'catalog','combo-del':'catalog','pos-combo':'sell','new-sale':'sell','pos-confirm':'sell','void-sale':'sell','caja-open':'cash','caja-move':'cash','caja-close':'cash','settle':'settle','settle-bulk':'settle'};
 function applyPermClasses(){['catalog','stock','sell','cash','settle','members'].forEach(k=>document.body.classList.toggle('no-'+k,!!STORE&&!can(k)))}
 function setStore(id){STORE=id;try{if(sb&&sb._setStore)sb._setStore(id)}catch(e){}}
 function storeName(){const s=STORES.find(x=>x.id===STORE);return s?s.name:'Ferretería'}
@@ -408,7 +408,7 @@ const N=v=>v==null?0:Number(v);
 function mCat(r){return {id:r.id,name:r.name}}
 function mSup(r){return {id:r.id,name:r.name,phone:r.phone||'',url:r.url||'',notes:r.notes||''}}
 function mPay(r){return {id:r.id,name:r.name,type:r.type,fee:N(r.fee),days:N(r.days),active:r.active!==false}}
-function mProd(r){return {id:r.id,sku:r.sku,name:r.name,categoryId:r.category_id||'',supplierId:r.supplier_id||'',brand:r.brand||'',unit:r.unit||'unidad',location:r.location||'',stock:N(r.stock),min:N(r.min_stock),ideal:N(r.ideal_stock),cost:N(r.cost),price:N(r.price),buyUrl:r.buy_url||'',notes:r.notes||'',review:r.review||'',active:r.active!==false,photoPath:r.photo_path||null,packQty:N(r.pack_qty)||1,loosePrice:r.loose_price==null?null:N(r.loose_price),priceHistory:Array.isArray(r.price_history)?r.price_history:[],createdAt:r.created_at,updatedAt:r.updated_at}}
+function mProd(r){return {id:r.id,sku:r.sku,name:r.name,categoryId:r.category_id||'',supplierId:r.supplier_id||'',brand:r.brand||'',unit:r.unit||'unidad',location:r.location||'',stock:N(r.stock),min:N(r.min_stock),ideal:N(r.ideal_stock),cost:N(r.cost),price:N(r.price),buyUrl:r.buy_url||'',notes:r.notes||'',review:r.review||'',active:r.active!==false,photoPath:r.photo_path||null,packQty:N(r.pack_qty)||1,loosePrice:r.loose_price==null?null:N(r.loose_price),priceHistory:Array.isArray(r.price_history)?r.price_history:[],priceOk:r.price_ok==null?null:N(r.price_ok),priceOkCost:r.price_ok_cost==null?null:N(r.price_ok_cost),createdAt:r.created_at,updatedAt:r.updated_at}}
 function mMov(r){return {number:r.number==null?null:N(r.number),id:r.id,productId:r.product_id,name:r.name,unit:r.unit,type:r.type,qty:N(r.qty),delta:N(r.delta),after:N(r.stock_after),reason:r.reason||'',note:r.note||'',date:r.created_at,by:r.by_email||''}}
 function mSale(r){return {id:r.id,number:r.number,date:r.date,sessionId:r.session_id,items:r.items||[],subtotal:N(r.subtotal),discount:N(r.discount),total:N(r.total),payments:r.payments||[],customer:r.customer||'',note:r.note||'',voided:!!r.voided,voidedAt:r.voided_at,by:r.by_email||''}}
 function mSet(r){return {id:r.id,saleId:r.sale_id,saleNumber:r.sale_number,methodId:r.method_id||'',methodName:r.method_name,kind:r.kind,gross:N(r.gross),fee:N(r.fee),net:N(r.net),date:r.date,expected:r.expected,status:r.status,settledDate:r.settled_date||'',received:r.received==null?null:N(r.received),collectedVia:r.collected_via||'',customer:r.customer||''}}
@@ -452,7 +452,7 @@ const LOADERS={
   categories:async()=>{S.categories=(await pages(()=>sb.from('categories').select('*').order('name').order('id'))).map(mCat)},
   suppliers:async()=>{S.suppliers=(await pages(()=>sb.from('suppliers').select('*').order('name').order('id'))).map(mSup)},
   pay_methods:async()=>{S.payMethods=(await pages(()=>sb.from('pay_methods').select('*').order('created_at').order('id'))).map(mPay)},
-  products:async()=>{S.products=(await pages(()=>sb.from('products').select('*').order('name').order('id'))).map(mProd);rebuildPhotos()},
+  products:async()=>{const rows=await pages(()=>sb.from('products').select('*').order('name').order('id'));if(rows.length)HAS_PRICE_OK='price_ok' in rows[0];S.products=rows.map(mProd);rebuildPhotos()},
   stock_movements:async full=>{
     const rows=(await pages(()=>sb.from('stock_movements').select('*').order('created_at',{ascending:false}).order('id'),full?1500:300)).map(mMov);
     const ids={};S.products.forEach(p=>{ids[p.id]=1});
@@ -938,12 +938,13 @@ function cajaOpenModal(after){
 function cajaMoveModal(type){
   openModal(type==='in'?'Ingreso de efectivo':'Egreso de efectivo',
     '<div class="fgrid"><label class="f">Monto<input name="amount" type="text" inputmode="decimal" autocomplete="off" data-num required></label>'+
-    '<label class="f">Concepto<input name="concept" list="cc" required value="'+(type==='out'?'Pago a proveedor':'Aporte de efectivo')+'"><datalist id="cc">'+CAJA_CONCEPTS.map(c=>'<option value="'+esc(c)+'">').join('')+'</datalist></label>'+
+    '<label class="f">Motivo *<input name="concept" list="cc" required minlength="3" maxlength="120" autocomplete="off" value="" placeholder="'+(type==='out'?'¿Para qué sale la plata? Ej: pago a proveedor X':'¿Por qué entra la plata? Ej: cambio para la caja')+'"><datalist id="cc">'+CAJA_CONCEPTS.map(c=>'<option value="'+esc(c)+'">').join('')+'</datalist></label>'+
     '<label class="f full">Nota (opcional)<input name="note"></label></div>',
     async fd=>{
       const a=round2(num(fd.amount));if(a<=0){toast('Ingresá un monto mayor a 0','err');return false}
+      const cpt=(fd.concept||'').trim();if(cpt.length<3){toast('Escribí el motivo del '+(type==='out'?'egreso':'ingreso')+' de efectivo','err');const el=$('#mform [name=concept]');if(el)el.focus();return false}
       const sess=currentSession();if(!sess){toast('La caja está cerrada','err');return false}
-      const r=await attempt(()=>sb.rpc('add_cash_move',{p_session:sess.id,p_type:type,p_amount:a,p_concept:fd.concept.trim(),p_note:(fd.note||'').trim()}));
+      const r=await attempt(()=>sb.rpc('add_cash_move',{p_session:sess.id,p_type:type,p_amount:a,p_concept:cpt,p_note:(fd.note||'').trim()}));
       await safeReload(['cash_sessions']);
       if(!r.ok)return false;
       toast('Movimiento de caja registrado');
@@ -1615,9 +1616,9 @@ function viewInventario(){
 }
 // Precios que parecen errores de carga: comparados con el costo y con el resto de su categoría
 function median(a){if(!a.length)return 0;a=a.slice().sort((x,y)=>x-y);const m=a.length>>1;return a.length%2?a[m]:(a[m-1]+a[m])/2}
-let _pf=null;
+let _pf=null,HAS_PRICE_OK=false;   // el botón "Está bien" aparece solo cuando la base ya tiene las columnas (supabase-preciook.sql)
 function priceFlags(){
-  if(_pf&&_pf.src===S.products&&_pf.len===S.products.length&&_pf.sig===S.products.reduce((t,p)=>t+(Number(p.price)||0)+(Number(p.cost)||0),0))return _pf;
+  if(_pf&&_pf.src===S.products&&_pf.len===S.products.length&&_pf.sig===pfSig())return _pf;
   const byCat={};S.products.forEach(p=>{const v=Number(p.price)||0;if(v>0)(byCat[p.categoryId||'']=byCat[p.categoryId||'']||[]).push(v)});
   const med={};for(const k in byCat)if(byCat[k].length>=5)med[k]=median(byCat[k]);
   const map={};let n=0;
@@ -1628,9 +1629,19 @@ function priceFlags(){
     else if(c>0&&v>=c*8)r='El precio ('+fm(v)+') es '+Math.round(v/c)+' veces el costo ('+fm(c)+')';
     else if(m&&v>=m*40)r='Sale '+fm(v)+' y en su categoría la mayoría ronda '+fm(m)+'. ¿Le sobran ceros?';
     else if(m&&v<=m/30)r='Sale '+fm(v)+' y en su categoría la mayoría ronda '+fm(m)+'. ¿Le faltan ceros?';
+    if(r&&p.priceOk!=null&&Math.abs(p.priceOk-v)<0.005&&Math.abs((p.priceOkCost||0)-c)<0.005)r='';
     if(r){map[p.id]=r;n++}
   });
-  _pf={src:S.products,len:S.products.length,sig:S.products.reduce((t,p)=>t+(Number(p.price)||0)+(Number(p.cost)||0),0),map,n};return _pf;
+  _pf={src:S.products,len:S.products.length,sig:pfSig(),map,n};return _pf;
+}
+function pfSig(){return S.products.reduce((t,p)=>t+(Number(p.price)||0)+(Number(p.cost)||0)+(p.priceOk==null?0:p.priceOk+1),0)
+}
+async function markPriceOk(id,t){const p=prod(id);if(!p)return;t.disabled=true;
+  const r=await attempt(()=>sb.from('products').update({price_ok:p.price||0,price_ok_cost:p.cost||0}).eq('id',id));
+  if(!r.ok){t.disabled=false;return}
+  await reload(['products']);renderInvRows();
+  const sel=$('#fst');if(sel)sel.innerHTML=sel.innerHTML.replace(/Precios raros \(\d+\)/,'Precios raros ('+priceFlags().n+')');
+  toast('Listo: no se avisa más del precio de '+p.name+' (si cambia el precio o el costo, se vuelve a revisar)');
 }
 function filteredProducts(){
   const q=norm(ui.q);const PF=priceFlags().map;
@@ -1676,7 +1687,7 @@ function renderInvRows(){
       '<td data-label="Ubicación">'+esc(p.location||'—')+'</td>'+
       '<td data-label="Stock" class="num"><span class="stockn">'+fstock(p)+'</span><div class="small muted">mín. '+fq(p.min)+'</div></td>'+
       '<td data-label="Estado">'+badge(p)+'</td>'+
-      '<td data-label="Precio" class="num">'+(PF.map[p.id]?'<span class="pfbad" title="'+esc(PF.map[p.id])+'">'+ic('alert',13)+' </span>':'')+(p.price?fm(p.price):'—')+(PF.map[p.id]&&ui.st==='price'?'<div class="small pfwhy">'+esc(PF.map[p.id])+'</div>':'')+(isPack(p)?'<div class="small muted">'+fm(unitPrice(p))+' c/u</div>':'')+'</td>'+
+      '<td data-label="Precio" class="num">'+(PF.map[p.id]?'<span class="pfbad" title="'+esc(PF.map[p.id])+'">'+ic('alert',13)+' </span>':'')+(p.price?fm(p.price):'—')+(PF.map[p.id]&&ui.st==='price'?'<div class="small pfwhy">'+esc(PF.map[p.id])+'</div>'+(HAS_PRICE_OK?'<button class="btn sm pfok" data-act="price-ok" data-id="'+p.id+'" title="Lo revisé y el precio está bien: no avisar más (si cambia el precio o el costo, vuelve a revisarlo)">'+ic('check',14)+'Está bien</button>':''):'')+(isPack(p)?'<div class="small muted">'+fm(unitPrice(p))+' c/u</div>':'')+'</td>'+
       '<td><div class="acts"><button class="btn sm" data-act="move" data-id="'+p.id+'" data-type="out">− Salida</button>'+
       '<button class="btn sm" data-act="move" data-id="'+p.id+'" data-type="in">+ Ingreso</button>'+
       '<button class="btn sm icon" data-act="edit-product" data-id="'+p.id+'" title="Editar" aria-label="Editar">'+ic('edit',15)+'</button></div></td></tr>'
@@ -2472,6 +2483,7 @@ document.addEventListener('click',e=>{
     case 'import-csv': $('#fileCsv').click();break;
     case 'template-csv': templateCSV();break;
     case 'seed': seedFromUI();break;
+    case 'price-ok': markPriceOk(id,t);break;
     case 'see-price-flags': ui.st='price';ui.sort='pdesc';ui.page=1;render();break;
     case 'go-review': ui.tab='inventario';ui.st='review';ui.q='';ui.cat='';ui.sup='';render();window.scrollTo(0,0);break;
     case 'logout': logout();break;
