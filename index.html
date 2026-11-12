@@ -106,7 +106,7 @@ main>.title{display:none}
 .stat.alert{border-color:#F6C8B2;background:#FFFAF7}
 .stat.alert .v{color:var(--accent-2)}
 .stat.danger .v{color:var(--red)}
-.stat.bank{border-color:#BDE8C9;background:var(--green-bg);cursor:pointer}.stat.bank .v{color:var(--green)}.stat.bank:hover{border-color:var(--green)}.stat.bank .l small,.stat.bankout .l small{display:block;font-weight:400;font-size:12px}.stat.bankout{cursor:pointer}.stat.bankout .v{color:var(--red)}.stat.bankout:hover{border-color:var(--red)}
+.stat.bank{border-color:#BDE8C9;background:var(--green-bg);cursor:pointer}.stat.bank .v{color:var(--green)}.stat.bank:hover{border-color:var(--green)}.stat.bank .l small,.stat.bankout .l small{display:block;font-weight:400;font-size:12px}.mtag{display:inline-block;font-size:11px;font-weight:600;padding:1px 7px;border-radius:999px;background:var(--line);color:var(--muted);vertical-align:1px}.mtag.bk{background:var(--green-bg);color:var(--green)}.stat.bankout{cursor:pointer}.stat.bankout .v{color:var(--red)}.stat.bankout:hover{border-color:var(--red)}
 .banktbl td small{display:block;color:var(--muted);font-size:12px;white-space:normal}
 
 .banner{background:var(--amber-bg);border:1px solid #F5D3A1;border-left:4px solid #E58E1B;color:#6B3A0A;border-radius:var(--r-md);padding:14px 18px;display:flex;gap:14px;align-items:center;justify-content:space-between;flex-wrap:wrap;margin-bottom:16px}
@@ -939,20 +939,43 @@ function cajaOpenModal(after){
       if(after)setTimeout(after,0);
     },'Abrir caja');
 }
-function cajaMoveModal(type){
-  openModal(type==='in'?'Ingreso de efectivo':'Egreso de efectivo',
+function moveVias(){return ['Transferencia'].concat(S.payMethods.filter(m=>m.type==='electronic'&&!/transf/i.test(m.name)).map(m=>m.name)).concat(['Otra cuenta'])}
+// Ingreso / egreso de plata: en efectivo (va a la caja) o por transferencia / MP (va al banco)
+function cajaMoveModal(type,medio){
+  const sess=currentSession();
+  const def=medio||(sess?'Efectivo':'Transferencia');
+  const opts='<option value="Efectivo"'+(sess?'':' disabled')+(def==='Efectivo'?' selected':'')+'>Efectivo (caja)'+(sess?'':' — la caja está cerrada')+'</option>'+
+    moveVias().map(v=>'<option value="'+esc(v)+'"'+(HAS_BANK?'':' disabled')+(def===v&&HAS_BANK?' selected':'')+'>'+esc(v)+(HAS_BANK?'':' (falta activar)')+'</option>').join('');
+  openModal(type==='in'?'Ingreso de dinero':'Egreso de dinero',
     '<div class="fgrid"><label class="f">Monto<input name="amount" type="text" inputmode="decimal" autocomplete="off" data-num required></label>'+
-    '<label class="f">Motivo *<input name="concept" list="cc" required minlength="3" maxlength="120" autocomplete="off" value="" placeholder="'+(type==='out'?'¿Para qué sale la plata? Ej: pago a proveedor X':'¿Por qué entra la plata? Ej: cambio para la caja')+'"><datalist id="cc">'+CAJA_CONCEPTS.map(c=>'<option value="'+esc(c)+'">').join('')+'</datalist></label>'+
-    '<label class="f full">Nota (opcional)<input name="note"></label></div>',
+    '<label class="f">Medio *<select name="medio" required>'+opts+'</select></label>'+
+    '<label class="f full">Motivo *<input name="concept" list="cc" required minlength="3" maxlength="120" autocomplete="off" value="" placeholder="'+(type==='out'?'¿Para qué sale la plata? Ej: pago a proveedor X':'¿Por qué entra la plata? Ej: cambio para la caja')+'"><datalist id="cc">'+CAJA_CONCEPTS.concat(['Pago de servicios','Depósito']).map(c=>'<option value="'+esc(c)+'">').join('')+'</datalist></label>'+
+    '<label class="f full">Nota (opcional)<input name="note" placeholder="Ej: nombre, número de factura"></label></div>',
     async fd=>{
       const a=round2(num(fd.amount));if(a<=0){toast('Ingresá un monto mayor a 0','err');return false}
-      const cpt=(fd.concept||'').trim();if(cpt.length<3){toast('Escribí el motivo del '+(type==='out'?'egreso':'ingreso')+' de efectivo','err');const el=$('#mform [name=concept]');if(el)el.focus();return false}
-      const sess=currentSession();if(!sess){toast('La caja está cerrada','err');return false}
-      const r=await attempt(()=>sb.rpc('add_cash_move',{p_session:sess.id,p_type:type,p_amount:a,p_concept:cpt,p_note:(fd.note||'').trim()}));
-      await safeReload(['cash_sessions']);
-      if(!r.ok)return false;
-      toast('Movimiento de caja registrado');
+      const cpt=(fd.concept||'').trim();if(cpt.length<3){toast('Escribí el motivo del '+(type==='out'?'egreso':'ingreso'),'err');const el=$('#mform [name=concept]');if(el)el.focus();return false}
+      const md=fd.medio||'Efectivo',note=(fd.note||'').trim();
+      if(md==='Efectivo'){
+        const ss=currentSession();if(!ss){toast('La caja está cerrada: abrila para mover efectivo','err');return false}
+        const r=await attempt(()=>sb.rpc('add_cash_move',{p_session:ss.id,p_type:type,p_amount:a,p_concept:cpt,p_note:note}));
+        await safeReload(['cash_sessions']);
+        if(!r.ok)return false;
+        toast((type==='out'?'Egreso':'Ingreso')+' de efectivo registrado');
+      } else {
+        if(!HAS_BANK){toast('Falta activar los movimientos de banco','err');return false}
+        const r=await attempt(()=>sb.from('bank_moves').insert({id:uid(),type,amount:a,concept:cpt,note,via:md}));
+        await safeReload(['bank_moves']);
+        if(!r.ok)return false;
+        toast((type==='out'?'Egreso':'Ingreso')+' por '+md+' registrado');
+      }
     });
+}
+// Lista de la caja: el efectivo del turno + lo movido por transferencia desde que se abrió la caja
+function cajaMovesList(sess){
+  const it=sess.moves.map(m=>({d:m.date,html:'<div class="gh" style="margin:0;padding:6px 0;border-bottom:1px solid var(--line)"><span>'+esc(m.concept)+' <span class="mtag">Efectivo</span><div class="small muted">'+fdate(m.date)+(m.note?' · '+esc(m.note):'')+'</div></span><b class="'+(m.type==='in'?'posv':'neg')+'">'+(m.type==='in'?'+':'−')+fm(m.amount)+'</b></div>'}))
+    .concat((S.bankMoves||[]).filter(m=>m.createdAt>=sess.openedAt).map(m=>({d:m.createdAt,html:bankMoveRow(m)})));
+  if(!it.length)return '<div class="muted small">Registrá acá los pagos a proveedores, retiros, gastos o aportes, en efectivo o por transferencia. El efectivo se tiene en cuenta en el arqueo; las transferencias se restan o suman a lo del banco.</div>';
+  return it.sort((x,y)=>String(y.d).localeCompare(String(x.d))).map(x=>x.html).join('');
 }
 function cajaCloseModal(){
   const sess=currentSession();if(!sess)return;
@@ -1123,36 +1146,20 @@ function bankCards(){
     (HAS_BANK?'<div class="stat bankout" data-act="bank-months" role="button" tabindex="0" title="Ver mes por mes"><div class="v">'+fm(bk.out)+'</div><div class="l">Salió del banco este mes<small>'+bk.outN+' pago'+(bk.outN===1?'':'s')+' · queda '+fm(bk.total-bk.out)+' neto ›</small></div></div>':'');
 }
 // En Caja: los cuadros del banco + los ingresos/egresos que se hacen desde el banco (transferencias)
-function bankSection(){
+function bankSection(closed){
   const ym=ymd(new Date()).slice(0,7);
   let h='<div class="stats">'+bankCards()+'</div><div class="spacer"></div>';
-  if(!HAS_BANK)return h;
+  if(!HAS_BANK||!closed)return h;
   const ms=(S.bankMoves||[]).filter(m=>String(m.date).slice(0,7)===ym);
-  h+='<div class="card"><div class="gh"><div class="h3" style="margin:0">Ingresos y egresos de banco / transferencias</div><div class="row noprint"><button class="btn sm" data-act="bank-move" data-type="in">+ Ingreso</button><button class="btn sm" data-act="bank-move" data-type="out">− Egreso</button></div></div>'+
+  h+='<div class="card"><div class="gh"><div class="h3" style="margin:0">Ingresos y egresos por transferencia</div><div class="row noprint"><button class="btn sm" data-act="bank-move" data-type="in">+ Ingreso</button><button class="btn sm" data-act="bank-move" data-type="out">− Egreso</button></div></div>'+
     (ms.length?ms.map(bankMoveRow).join(''):'<div class="muted small">Registrá acá lo que se paga o se saca de la cuenta del banco o Mercado Pago (por ejemplo, una transferencia a un proveedor), para que el saldo del mes dé bien.</div>')+
     '</div><div class="spacer"></div>';
   return h;
 }
 function bankMoveRow(m){
-  return '<div class="gh" style="margin:0;padding:6px 0;border-bottom:1px solid var(--line)'+(m.voided?';opacity:.55':'')+'"><span>'+(m.voided?'<s>':'')+esc(m.concept)+(m.voided?'</s> <span class="pill">anulado</span>':'')+
-    '<div class="small muted">'+fdate(m.createdAt)+(m.via?' · '+esc(m.via):'')+(m.note?' · '+esc(m.note):'')+(m.by?' · '+esc(m.by):'')+(m.voided&&m.voidedBy?' · anuló '+esc(m.voidedBy):'')+'</div></span>'+
+  return '<div class="gh" style="margin:0;padding:6px 0;border-bottom:1px solid var(--line)'+(m.voided?';opacity:.55':'')+'"><span>'+(m.voided?'<s>':'')+esc(m.concept)+(m.voided?'</s> <span class="mtag">anulado</span>':'')+
+    ' <span class="mtag bk">'+esc(m.via||'Banco')+'</span><div class="small muted">'+fdate(m.createdAt)+(m.note?' · '+esc(m.note):'')+(m.by?' · '+esc(m.by):'')+(m.voided&&m.voidedBy?' · anuló '+esc(m.voidedBy):'')+'</div></span>'+
     '<span class="row" style="gap:8px;flex-wrap:nowrap"><b class="'+(m.type==='in'?'posv':'neg')+'">'+(m.type==='in'?'+':'−')+fm(m.amount)+'</b>'+(m.voided?'':'<button class="btn sm icon noprint" data-act="bank-void" data-id="'+m.id+'" title="Anular este movimiento" aria-label="Anular">'+ic('x',14)+'</button>')+'</span></div>';
-}
-function bankMoveModal(type){
-  const vias=['Transferencia'].concat(S.payMethods.filter(m=>m.type==='electronic'&&!/transf/i.test(m.name)).map(m=>m.name));
-  openModal(type==='in'?'Ingreso al banco':'Egreso del banco / transferencia',
-    '<div class="fgrid"><label class="f">Monto<input name="amount" type="text" inputmode="decimal" autocomplete="off" data-num required></label>'+
-    '<label class="f">Desde / hacia<select name="via">'+vias.map(v=>'<option>'+esc(v)+'</option>').join('')+'<option>Otra cuenta</option></select></label>'+
-    '<label class="f full">Motivo *<input name="concept" list="bc" required minlength="3" maxlength="120" autocomplete="off" value="" placeholder="'+(type==='out'?'¿Para qué sale la plata? Ej: transferencia a proveedor X':'¿Por qué entra la plata? Ej: depósito')+'"><datalist id="bc">'+['Pago a proveedor','Pago de servicios','Retiro del dueño','Depósito','Gastos varios'].map(c=>'<option value="'+c+'">').join('')+'</datalist></label>'+
-    '<label class="f full">Nota (opcional)<input name="note" placeholder="Ej: nombre, número de factura"></label></div>',
-    async fd=>{
-      const a=round2(num(fd.amount));if(a<=0){toast('Ingresá un monto mayor a 0','err');return false}
-      const cpt=(fd.concept||'').trim();if(cpt.length<3){toast('Escribí el motivo del '+(type==='out'?'egreso':'ingreso'),'err');const el=$('#mform [name=concept]');if(el)el.focus();return false}
-      const r=await attempt(()=>sb.from('bank_moves').insert({id:uid(),type,amount:a,concept:cpt,note:(fd.note||'').trim(),via:fd.via||''}));
-      await safeReload(['bank_moves']);
-      if(!r.ok)return false;
-      toast(type==='out'?'Egreso del banco registrado':'Ingreso al banco registrado');
-    });
 }
 function bankVoidModal(id){
   const m=(S.bankMoves||[]).find(x=>x.id===id);if(!m)return;
@@ -1523,7 +1530,7 @@ function viewCaja(){
   const sess=currentSession();
   let h='';
   if(!sess){
-    h+='<div class="card empty"><h3>La caja está cerrada</h3><p>Abrí la caja con el efectivo inicial para empezar a registrar ventas.</p><button class="btn primary" data-act="caja-open">Abrir caja</button></div><div class="spacer"></div>'+bankSection();
+    h+='<div class="card empty"><h3>La caja está cerrada</h3><p>Abrí la caja con el efectivo inicial para empezar a registrar ventas.</p><button class="btn primary" data-act="caja-open">Abrir caja</button></div><div class="spacer"></div>'+bankSection(true);
   } else {
     const t=cajaTotals(sess);
     h+='<div class="banner good"><div><b>Caja abierta</b> desde '+fdate(sess.openedAt)+'</div><button class="btn" data-act="caja-close">'+ic('lock',16)+'Cerrar caja</button></div>'+
@@ -1534,8 +1541,8 @@ function viewCaja(){
     bankSection()+
     '<div class="grid2"><div class="card"><div class="h3">Ventas por forma de pago</div>'+
     (Object.keys(t.byM).length?Object.keys(t.byM).map(k=>'<div class="gh" style="margin:0;padding:6px 0;border-bottom:1px solid var(--line)"><span>'+esc(k)+'</span><b>'+fm(t.byM[k])+'</b></div>').join(''):'<div class="muted">Sin ventas todavía.</div>')+
-    '</div><div class="card"><div class="gh"><div class="h3" style="margin:0">Ingresos y egresos de efectivo</div><div class="row noprint"><button class="btn sm" data-act="caja-move" data-type="in">+ Ingreso</button><button class="btn sm" data-act="caja-move" data-type="out">− Egreso</button></div></div>'+
-    (sess.moves.length?sess.moves.slice().reverse().map(m=>'<div class="gh" style="margin:0;padding:6px 0;border-bottom:1px solid var(--line)"><span>'+esc(m.concept)+'<div class="small muted">'+fdate(m.date)+(m.note?' · '+esc(m.note):'')+'</div></span><b class="'+(m.type==='in'?'posv':'neg')+'">'+(m.type==='in'?'+':'−')+fm(m.amount)+'</b></div>').join(''):'<div class="muted small">Registrá acá los pagos a proveedores, retiros, gastos o aportes en efectivo, para que el arqueo cierre.</div>')+'</div></div>'+
+    '</div><div class="card"><div class="gh"><div class="h3" style="margin:0">Ingresos y egresos</div><div class="row noprint"><button class="btn sm" data-act="caja-move" data-type="in">+ Ingreso</button><button class="btn sm" data-act="caja-move" data-type="out">− Egreso</button></div></div>'+
+    cajaMovesList(sess)+'</div></div>'+
     '<div class="card" style="padding:6px 10px"><div class="h3" style="padding:10px 6px 0">Ventas de este turno</div>'+
     (t.sales.length?'<table class="tbl"><thead><tr><th>#</th><th>Hora</th><th>Cliente</th><th>Pago</th><th class="num">Total</th><th></th></tr></thead><tbody>'+t.sales.map(s=>'<tr><td data-label="#"><b>#'+s.number+'</b></td><td data-label="Hora">'+fdate(s.date)+'</td><td data-label="Cliente">'+esc(s.customer||'Mostrador')+'</td><td data-label="Pago">'+esc(s.payments.map(p=>p.methodName).join(' + '))+'</td><td data-label="Total" class="num"><b>'+fm(s.total)+'</b></td><td><div class="acts"><button class="btn sm" data-act="view-sale" data-id="'+s.id+'">Ver</button></div></td></tr>').join('')+'</tbody></table>':'<div class="empty small">Sin ventas en este turno.</div>')+'</div>';
   }
@@ -2569,7 +2576,7 @@ document.addEventListener('click',e=>{
     case 'seed': seedFromUI();break;
     case 'price-ok': markPriceOk(id,t);break;
     case 'bank-months': openBankMonths();break;
-    case 'bank-move': bankMoveModal(t.getAttribute('data-type'));break;
+    case 'bank-move': cajaMoveModal(t.getAttribute('data-type'),'Transferencia');break;
     case 'bank-void': bankVoidModal(id);break;
     case 'see-price-flags': ui.st='price';ui.sort='pdesc';ui.page=1;render();break;
     case 'go-review': ui.tab='inventario';ui.st='review';ui.q='';ui.cat='';ui.sup='';render();window.scrollTo(0,0);break;
