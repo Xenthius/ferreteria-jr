@@ -459,6 +459,7 @@ const LOADERS={
   products:async()=>{const rows=await pages(()=>sb.from('products').select('*').order('name').order('id'));if(rows.length)HAS_PRICE_OK='price_ok' in rows[0];S.products=rows.map(mProd);rebuildPhotos()},
   stock_movements:async full=>{
     const rows=(await pages(()=>sb.from('stock_movements').select('*').order('created_at',{ascending:false}).order('id'),full?1500:300)).map(mMov);
+    if(PROD_P)await PROD_P.catch(()=>{});   // se baja junto con productos; se filtra cuando ya están
     const ids={};S.products.forEach(p=>{ids[p.id]=1});
     S.movements=mergeById(full?[]:S.movements,rows,1500).filter(m=>!m.productId||ids[m.productId]);
   },
@@ -479,13 +480,16 @@ const LOADERS={
   }
 };
 const ORDER=['bank_moves','combos','categories','suppliers','pay_methods','products','stock_movements','sales','settlements','cash_sessions'];
+let PROD_P=null;
 async function reload(tables,full){
   sbClient();
   const list=(tables||ORDER).filter(k=>LOADERS[k]);
   // productos antes que movimientos (los movimientos se filtran por productos existentes)
-  const first=list.filter(k=>k==='products'),rest=list.filter(k=>k!=='products');
-  if(first.length)await LOADERS.products();
-  await Promise.all(rest.map(k=>LOADERS[k](!!full)));
+  // todo sale en paralelo; los movimientos esperan a los productos solo para filtrar
+  const rest=list.filter(k=>k!=='products');
+  const pp=list.includes('products')?LOADERS.products():null;
+  PROD_P=pp;
+  try{await Promise.all([pp].concat(rest.map(k=>LOADERS[k](!!full))))}finally{if(PROD_P===pp)PROD_P=null}
 }
 async function safeReload(tables){try{await reload(tables)}catch(e){}}
 
@@ -557,16 +561,19 @@ function showLogin(msg){
 }
 async function loadAccess(){
   const c=sbClient();
-  const pr=await c.from('profiles').select('*').eq('user_id',USER.id);
+  // las 4 consultas salen juntas (antes iban una detrás de otra y demoraban el arranque)
+  const [pr,st,mm,dm]=await Promise.all([
+    c.from('profiles').select('*').eq('user_id',USER.id),
+    c.from('stores').select('*').order('name'),
+    c.from('memberships').select('*').eq('user_id',USER.id),
+    Promise.resolve(c.rpc('delete_store_mode')).catch(()=>({error:true}))]);
   if(pr.error)throw pr.error;
   ME={admin:!!(pr.data&&pr.data[0]&&pr.data[0].is_admin)};
-  const st=await c.from('stores').select('*').order('name');
   if(st.error)throw st.error;
   STORES=(st.data||[]).map(r=>({id:r.id,name:r.name,lastBackup:r.last_backup_at||null,createdBy:r.created_by||null}));
-  const mm=await c.from('memberships').select('*').eq('user_id',USER.id);
   if(mm.error)throw mm.error;
   MYROLES={};(mm.data||[]).forEach(m=>{MYROLES[m.store_id]=m.role||'manager'});
-  try{const dm=await c.rpc('delete_store_mode');DELMODE=dm.error?null:(dm.data||null)}catch(e){DELMODE=null}
+  DELMODE=dm&&!dm.error?(dm.data||null):null;
 }
 function renderStoreSel(){
   const sel=$('#storeSel');if(!sel)return;
